@@ -150,7 +150,7 @@ PORT=5000
 NODE_ENV=development
 
 # Database Configuration
-MONGODB_URI=mongodb+srv://pavanlebaka60:Lp@123456@cluster0.bvz3rtc.mongodb.net/attendance-system
+MONGODB_URI=MONGO_URL
 
 # JWT Configuration
 JWT_SECRET=x-company-attendance-system-super-secret-jwt-key-2024
