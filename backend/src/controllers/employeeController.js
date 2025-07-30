@@ -1,6 +1,7 @@
-const Attendance = require('../models/Attendance');
-const User = require('../models/User');
-const moment = require('moment');
+const Attendance = require("../models/Attendance");
+const User = require("../models/User");
+const moment = require("moment");
+const { sendSuccessResponse, sendErrorResponse, calculatePagination } = require("../utils/responseHelpers");
 
 // @desc    Punch in
 // @route   POST /api/employee/punch-in
@@ -10,11 +11,12 @@ const punchIn = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Find or create today's attendance record
-    let attendance = await Attendance.findByEmployeeAndDate(req.user._id, today);
-    
+    let attendance = await Attendance.findByEmployeeAndDate(
+      req.user._id,
+      today
+    );
+
     if (!attendance) {
-      // Create new attendance record
       attendance = await Attendance.create({
         employee: req.user._id,
         date: today,
@@ -22,39 +24,32 @@ const punchIn = async (req, res) => {
       });
     }
 
-    // Check if there's an active session (punch in without punch out)
     const currentSession = attendance.getCurrentSession();
+
     if (currentSession) {
-      return res.status(400).json({
-        error: 'You have an active session. Please punch out first.',
-      });
+      return sendErrorResponse(res, "You have an active session. Please punch out first.", 400);
     }
 
-    // Perform punch in
     await attendance.performPunchIn({
-      location: req.body.location || '',
+      location: req.body.location || "",
       ipAddress: req.ip || req.connection.remoteAddress,
-      userAgent: req.get('User-Agent'),
+      userAgent: req.get("User-Agent"),
     });
 
-    res.status(201).json({
-      status: 'success',
-      message: 'Punched in successfully',
-      data: {
+    const newCurrentSession = attendance.getCurrentSession();
+
+    return sendSuccessResponse(res, {
         attendance: {
           id: attendance._id,
-          currentSession: attendance.getCurrentSession(),
+          currentSession: newCurrentSession,
           totalSessions: attendance.totalSessions,
           totalHours: attendance.totalHours,
           date: attendance.date,
         },
-      },
-    });
+    }, "Punched in successfully", 201);
   } catch (error) {
     console.error('Punch in error:', error);
-    res.status(500).json({
-      error: 'Failed to punch in. Please try again.',
-    });
+    return sendErrorResponse(res, "Failed to punch in. Please try again.");
   }
 };
 
@@ -66,34 +61,27 @@ const punchOut = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Find today's attendance record
-    const attendance = await Attendance.findByEmployeeAndDate(req.user._id, today);
-    
+    const attendance = await Attendance.findByEmployeeAndDate(
+      req.user._id,
+      today
+    );
+
     if (!attendance) {
-      return res.status(400).json({
-        error: 'You have not punched in today',
-      });
+      return sendErrorResponse(res, "You have not punched in today", 400);
     }
 
-    // Check if there's an active session to punch out from
     const currentSession = attendance.getCurrentSession();
     if (!currentSession) {
-      return res.status(400).json({
-        error: 'You have no active session to punch out from',
-      });
+      return sendErrorResponse(res, "You have no active session to punch out from", 400);
     }
 
-    // Perform punch out
     await attendance.performPunchOut({
-      location: req.body.location || '',
+      location: req.body.location || "",
       ipAddress: req.ip || req.connection.remoteAddress,
-      userAgent: req.get('User-Agent'),
+      userAgent: req.get("User-Agent"),
     });
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Punched out successfully',
-      data: {
+    return sendSuccessResponse(res, {
         attendance: {
           id: attendance._id,
           totalSessions: attendance.totalSessions,
@@ -101,13 +89,10 @@ const punchOut = async (req, res) => {
           totalHours: attendance.totalHours,
           date: attendance.date,
         },
-      },
-    });
+    }, "Punched out successfully");
   } catch (error) {
     console.error('Punch out error:', error);
-    res.status(500).json({
-      error: 'Failed to punch out. Please try again.',
-    });
+    return sendErrorResponse(res, "Failed to punch out. Please try again.");
   }
 };
 
@@ -116,11 +101,25 @@ const punchOut = async (req, res) => {
 // @access  Private (Employee)
 const getTodayStatus = async (req, res) => {
   try {
+    const AttendanceStatusService = require("../services/attendanceStatusService");
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const attendance = await Attendance.findByEmployeeAndDate(req.user._id, today);
-    
+    const attendance = await Attendance.findByEmployeeAndDate(
+      req.user._id,
+      today
+    );
+
+    let updatedAttendance;
+    try {
+      updatedAttendance = await AttendanceStatusService.updateAttendanceStatus(req.user._id, today);
+    } catch (statusError) {
+      console.error('Error updating attendance status:', statusError);
+      // If status update fails, use the original attendance record
+      updatedAttendance = attendance;
+    }
+
     const status = {
       hasAttendance: false,
       totalSessions: 0,
@@ -130,16 +129,19 @@ const getTodayStatus = async (req, res) => {
       canPunchOut: false,
       currentSession: null,
       punchSessions: [],
+      currentStatus: updatedAttendance ? updatedAttendance.status : "not-started",
+      statusDisplay: updatedAttendance ? AttendanceStatusService.getStatusDisplay(updatedAttendance.status) : "Not Started",
     };
 
-    if (attendance) {
+    if (updatedAttendance) {
       status.hasAttendance = true;
-      status.totalSessions = attendance.totalSessions;
-      status.completedSessions = attendance.completedSessions;
-      status.totalHours = attendance.totalHours;
-      status.punchSessions = attendance.punchSessions;
-      
-      const currentSession = attendance.getCurrentSession();
+      status.totalSessions = updatedAttendance.totalSessions;
+      status.completedSessions = updatedAttendance.completedSessions;
+      status.totalHours = updatedAttendance.totalHours;
+      status.punchSessions = updatedAttendance.punchSessions;
+
+      const currentSession = updatedAttendance.getCurrentSession();
+
       if (currentSession) {
         status.canPunchIn = false;
         status.canPunchOut = true;
@@ -150,172 +152,153 @@ const getTodayStatus = async (req, res) => {
       }
     }
 
-    res.status(200).json({
-      status: 'success',
-      data: {
+    return sendSuccessResponse(res, {
         today: today,
         attendance: status,
-      },
     });
   } catch (error) {
     console.error('Get today status error:', error);
-    res.status(500).json({
-      error: 'Failed to get today\'s status',
-    });
+    return sendErrorResponse(res, "Failed to get today's status. Please try again.");
   }
 };
 
 // @desc    Get attendance logs
-// @route   GET /api/employee/attendance
+// @route   GET /api/employee/attendance-logs
 // @access  Private (Employee)
 const getAttendanceLogs = async (req, res) => {
   try {
-    const { startDate, endDate, page = 1, limit = 30 } = req.query;
-    
-    let query = { employee: req.user._id };
-    
-    if (startDate && endDate) {
-      // Set start date to beginning of day
-      const startOfDay = new Date(startDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      // Set end date to end of day
-      const endOfDay = new Date(endDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      query.date = {
-        $gte: startOfDay,
-        $lte: endOfDay,
-      };
-    }
+    const { month, year } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 30;
 
-    const skip = (page - 1) * limit;
-    
-    const attendance = await Attendance.find(query)
+    const startDate = new Date(
+      year || new Date().getFullYear(),
+      month ? month - 1 : new Date().getMonth(),
+      1
+    );
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0
+    );
+
+    const attendanceLogs = await Attendance.find({
+      employee: req.user._id,
+      date: { $gte: startDate, $lte: endDate },
+    })
       .sort({ date: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .skip((page - 1) * limit)
+      .limit(limit);
 
-    const total = await Attendance.countDocuments(query);
+    const total = await Attendance.countDocuments({
+      employee: req.user._id,
+      date: { $gte: startDate, $lte: endDate },
+    });
 
-    res.status(200).json({
-      status: 'success',
-      data: {
-        attendance,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
-          totalRecords: total,
-          hasNextPage: page * limit < total,
-          hasPrevPage: page > 1,
-        },
-      },
+    const pagination = calculatePagination(page, limit, total);
+
+    return sendSuccessResponse(res, {
+        attendanceLogs,
+      pagination,
     });
   } catch (error) {
     console.error('Get attendance logs error:', error);
-    res.status(500).json({
-      error: 'Failed to get attendance logs',
-    });
+    return sendErrorResponse(res, "Failed to get attendance logs. Please try again.");
   }
 };
 
-// @desc    Get attendance summary
-// @route   GET /api/employee/summary
+// @desc    Get attendance statistics
+// @route   GET /api/employee/attendance-stats
 // @access  Private (Employee)
-const getAttendanceSummary = async (req, res) => {
+const getAttendanceStats = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        error: 'Start date and end date are required',
-      });
-    }
+    const { month, year } = req.query;
+    const startDate = new Date(
+      year || new Date().getFullYear(),
+      month ? month - 1 : new Date().getMonth(),
+      1
+    );
+    const endDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth() + 1,
+      0
+    );
 
-    // Set start date to beginning of day
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    
-    // Set end date to end of day
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    const attendance = await Attendance.find({
+    const attendanceRecords = await Attendance.find({
       employee: req.user._id,
-      date: { $gte: start, $lte: end },
+      date: { $gte: startDate, $lte: endDate },
     });
 
-    const summary = {
-      totalDays: attendance.length,
-      presentDays: attendance.filter(a => a.status === 'present').length,
-      absentDays: attendance.filter(a => a.status === 'absent').length,
-      lateDays: attendance.filter(a => a.status === 'late').length,
-      totalHours: attendance.reduce((sum, a) => sum + (a.totalHours || 0), 0),
-      averageHoursPerDay: attendance.length > 0 
-        ? attendance.reduce((sum, a) => sum + (a.totalHours || 0), 0) / attendance.length 
-        : 0,
+    const stats = {
+      totalDays: attendanceRecords.length,
+      present: 0,
+      absent: 0,
+      halfDay: 0,
+      leave: 0,
+      workFromHome: 0,
+      onDuty: 0,
+      sickLeave: 0,
+      holiday: 0,
+      totalHours: 0,
     };
 
-    res.status(200).json({
-      status: 'success',
-      data: {
-        summary,
-        dateRange: { startDate, endDate },
+    attendanceRecords.forEach((record) => {
+      stats.totalHours += record.totalHours || 0;
+
+      switch (record.status) {
+        case "present":
+          stats.present++;
+          break;
+        case "absent":
+          stats.absent++;
+          break;
+        case "half-day":
+          stats.halfDay++;
+          break;
+        case "leave":
+          stats.leave++;
+          break;
+        case "work-from-home":
+          stats.workFromHome++;
+          break;
+        case "on-duty":
+          stats.onDuty++;
+          break;
+        case "sick-leave":
+          stats.sickLeave++;
+          break;
+        case "holiday":
+          stats.holiday++;
+          break;
+      }
+    });
+
+    return sendSuccessResponse(res, {
+        stats,
+        period: {
+          startDate,
+          endDate,
       },
     });
   } catch (error) {
-    console.error('Get attendance summary error:', error);
-    res.status(500).json({
-      error: 'Failed to get attendance summary',
-    });
+    console.error('Get attendance stats error:', error);
+    return sendErrorResponse(res, "Failed to get attendance statistics. Please try again.");
   }
 };
 
-// @desc    Export personal attendance data
-// @route   GET /api/employee/export
+// @desc    Get profile
+// @route   GET /api/employee/profile
 // @access  Private (Employee)
-const exportAttendance = async (req, res) => {
+const getProfile = async (req, res) => {
   try {
-    const { startDate, endDate, format = 'csv' } = req.query;
-    
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        error: 'Start date and end date are required',
-      });
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return sendErrorResponse(res, "User not found", 404);
     }
-
-    // Set start date to beginning of day
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    
-    // Set end date to end of day
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-
-    const attendance = await Attendance.find({
-      employee: req.user._id,
-      date: { $gte: start, $lte: end },
-    }).sort({ date: -1 });
-
-    // For now, return JSON. In production, implement actual file generation
-    res.status(200).json({
-      status: 'success',
-      message: `Attendance data exported in ${format.toUpperCase()} format`,
-      data: {
-        attendance,
-        exportInfo: {
-          format,
-          dateRange: { startDate, endDate },
-          totalRecords: attendance.length,
-          exportedAt: new Date(),
-        },
-      },
-    });
+    return sendSuccessResponse(res, { user });
   } catch (error) {
-    console.error('Export attendance error:', error);
-    res.status(500).json({
-      error: 'Failed to export attendance data',
-    });
+    console.error('Get profile error:', error);
+    return sendErrorResponse(res, "Failed to get profile. Please try again.");
   }
 };
 
@@ -325,29 +308,67 @@ const exportAttendance = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const { name, department } = req.body;
-    
-    const updateData = {};
-    if (name) updateData.name = name;
-    if (department) updateData.department = department;
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      updateData,
+      { name, department },
       { new: true, runValidators: true }
     );
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Profile updated successfully',
-      data: {
-        user,
-      },
-    });
+    if (!user) {
+      return sendErrorResponse(res, "User not found", 404);
+    }
+
+    return sendSuccessResponse(res, { user }, "Profile updated successfully");
   } catch (error) {
     console.error('Update profile error:', error);
-    res.status(500).json({
-      error: 'Failed to update profile',
-    });
+    return sendErrorResponse(res, "Failed to update profile. Please try again.");
+  }
+};
+
+// @desc    Get employee dashboard
+// @route   GET /api/employee/dashboard
+// @access  Private (Employee)
+const getDashboard = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Get today's attendance status
+    const attendance = await Attendance.findByEmployeeAndDate(req.user._id, today);
+    
+    const dashboardData = {
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        employeeId: req.user.employeeId,
+        department: req.user.department,
+        email: req.user.email,
+      },
+      today: {
+        date: today,
+        hasAttendance: !!attendance,
+        canPunchIn: true,
+        canPunchOut: false,
+        currentSession: null,
+        totalHours: attendance ? attendance.totalHours : 0,
+        status: attendance ? attendance.status : "not-started",
+      }
+    };
+
+    if (attendance) {
+      const currentSession = attendance.getCurrentSession();
+      if (currentSession) {
+        dashboardData.today.canPunchIn = false;
+        dashboardData.today.canPunchOut = true;
+        dashboardData.today.currentSession = currentSession;
+      }
+    }
+
+    return sendSuccessResponse(res, dashboardData);
+  } catch (error) {
+    console.error('Get dashboard error:', error);
+    return sendErrorResponse(res, "Failed to get dashboard data. Please try again.");
   }
 };
 
@@ -356,7 +377,8 @@ module.exports = {
   punchOut,
   getTodayStatus,
   getAttendanceLogs,
-  getAttendanceSummary,
-  exportAttendance,
+  getAttendanceStats,
+  getProfile,
   updateProfile,
-}; 
+  getDashboard,
+};

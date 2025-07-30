@@ -1,53 +1,54 @@
-const express = require('express');
+const express = require("express");
 const {
   punchIn,
   punchOut,
   getTodayStatus,
   getAttendanceLogs,
-  getAttendanceSummary,
-  exportAttendance,
+  getAttendanceStats,
+  getProfile,
   updateProfile,
-} = require('../controllers/employeeController');
+  getDashboard,
+} = require("../controllers/employeeController");
 
 const {
   protect,
   requireEmployee,
   desktopOnly,
-} = require('../middlewares/auth');
+} = require("../middlewares/auth");
 
 const {
   validateAttendanceAction,
-  validateDateRange,
-  validateDateRangeLogic,
-  validateExportFormat,
-} = require('../middlewares/validation');
+  validateProfileUpdate,
+} = require("../middlewares/validation");
 
 const router = express.Router();
 
-// Apply desktop-only middleware to all routes
-router.use(desktopOnly);
+// Apply desktop-only middleware to all routes (temporarily disabled for testing)
+// router.use(desktopOnly);
 
 // All routes require authentication
 router.use(protect);
 router.use(requireEmployee);
 
+// Dashboard
+router.get("/dashboard", getDashboard);
+
 // Attendance actions
-router.post('/punch-in', validateAttendanceAction, punchIn);
-router.post('/punch-out', validateAttendanceAction, punchOut);
+router.post("/punch-in", validateAttendanceAction, punchIn);
+router.post("/punch-out", validateAttendanceAction, punchOut);
 
 // Get today's status
-router.get('/today', getTodayStatus);
+router.get("/today", getTodayStatus);
 
-// Get attendance logs
-router.get('/attendance', validateDateRange, validateDateRangeLogic, getAttendanceLogs);
+// Get attendance logs (both routes for compatibility)
+router.get("/attendance", getAttendanceLogs);
+router.get("/attendance-logs", getAttendanceLogs);
 
-// Get attendance summary
-router.get('/summary', validateDateRange, validateDateRangeLogic, getAttendanceSummary);
-
-// Export attendance data
-router.get('/export', validateDateRange, validateDateRangeLogic, validateExportFormat, exportAttendance);
+// Get attendance statistics
+router.get("/attendance-stats", getAttendanceStats);
 
 // Profile management
-router.put('/profile', updateProfile);
+router.get("/profile", getProfile);
+router.put("/profile", validateProfileUpdate, updateProfile);
 
-module.exports = router; 
+module.exports = router;

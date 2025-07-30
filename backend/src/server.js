@@ -1,133 +1,137 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const morgan = require('morgan');
-require('dotenv').config();
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+require("dotenv").config();
 
-const authRoutes = require('./routes/auth');
-const employeeRoutes = require('./routes/employee');
-const adminRoutes = require('./routes/admin');
+const authRoutes = require("./routes/auth");
+const employeeRoutes = require("./routes/employee");
+const adminRoutes = require("./routes/admin");
+const configRoutes = require("./routes/config");
+const requestRoutes = require("./routes/requests");
+const notificationRoutes = require("./routes/notifications");
+const cronService = require("./services/cronService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Security Middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
+app.use(helmet());
 
-// Rate Limiting
+// Rate limiting disabled for development
+// Uncomment the following code for production use:
+
+/*
+const isDevelopment = process.env.NODE_ENV === 'development';
+const maxRequests = isDevelopment ? 2000 : 1000;
+
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.',
-  },
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: maxRequests,
+  message: { error: "Too many requests from this IP, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  skipFailedRequests: false,
+  onLimitReached: (req, res) => {
+    // Rate limit reached logging
+  }
 });
 
-app.use('/api/', limiter);
+app.use("/api/", limiter);
+
+const configLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100,
+  message: { error: "Too many config requests, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  skipFailedRequests: false,
+});
+*/
 
 // CORS Configuration
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+app.use(
+  cors({
+    origin: true, // Accept requests from anywhere
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
 // Body Parser
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Logging
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Health Check
-app.get('/health', (req, res) => {
+app.get("/health", (req, res) => {
   res.status(200).json({
-    status: 'OK',
+    status: "OK",
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    database:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/employee', employeeRoutes);
-app.use('/api/admin', adminRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/employee", employeeRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/config", configRoutes);
+app.use("/api/requests", requestRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // 404 Handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Route not found',
-    path: req.originalUrl,
-  });
+app.use("*", (req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('Global Error Handler:', err);
+  // Log rate limiting errors specifically
+  if (err.statusCode === 429) {
+    // Rate limit exceeded logging
+  }
   
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  res.status(err.statusCode || 500).json({
+    error: err.message || "Internal Server Error",
   });
 });
 
-// Database Connection
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => {
-    console.log('✅ Connected to MongoDB');
-    
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+// MongoDB Connection
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
     });
-  })
-  .catch((err) => {
-    console.error('❌ MongoDB connection error:', err);
+    console.log("✅ Connected to MongoDB");
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
     process.exit(1);
-  });
+  }
+};
 
-// Graceful Shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  mongoose.connection.close(() => {
-    console.log('MongoDB connection closed');
-    process.exit(0);
-  });
-});
+// Start server
+const startServer = async () => {
+  await connectDB();
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
-  mongoose.connection.close(() => {
-    console.log('MongoDB connection closed');
-    process.exit(0);
-  });
-});
+  // Initialize cron service for auto punch-out
+  try {
+    cronService.init();
+    console.log("✅ Cron service initialized");
+  } catch (error) {
+    console.error("❌ Cron service initialization error:", error);
+  }
 
-module.exports = app; 
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+};
+
+startServer();
+
+module.exports = app;

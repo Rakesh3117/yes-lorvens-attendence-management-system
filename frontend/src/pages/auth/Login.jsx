@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiUser, FiShield } from 'react-icons/fi';
+import { useSelector, useDispatch } from 'react-redux';
+import { FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiUsers, FiClock, FiMapPin, FiPhone, FiGlobe, FiAward, FiTrendingUp } from 'react-icons/fi';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { ThemeToggle } from '../../components/common';
+import { login, clearError } from '../../store/slices/authSlice';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, loading, error, clearError, isAuthenticated, user } = useAuth();
+  const dispatch = useDispatch();
+  const { user, isAuthenticated, isLoading, error } = useSelector((state) => state.auth);
   
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
-  
-  const [formErrors, setFormErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -43,63 +44,39 @@ const Login = () => {
 
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(() => clearError(), 5000);
+      const timer = setTimeout(() => dispatch(clearError()), 5000);
       return () => clearTimeout(timer);
     }
-  }, [error, clearError]);
-
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!formData.email.trim()) errors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Email is invalid';
-    
-    if (!formData.password) errors.password = 'Password is required';
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+  }, [error, dispatch]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validateForm()) return;
-    
     try {
-      await login(formData.email, formData.password);
+      await dispatch(login({ email: formData.email, password: formData.password })).unwrap();
     } catch (err) {
-      // Error is handled by the context
+      // Error is handled by Redux
     }
   };
 
   if (isMobile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 px-4">
         <div className="max-w-md w-full text-center">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 border border-white/20">
-            <div className="text-white text-6xl mb-4">📱</div>
-            <h2 className="text-2xl font-bold text-white mb-4">Mobile Access Restricted</h2>
-            <p className="text-white/90 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
+            <div className="text-blue-600 text-6xl mb-4">📱</div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Mobile Access Restricted</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               This application is designed for desktop and laptop computers only. 
               Please access the system from a desktop or laptop device.
             </p>
-            <div className="text-sm text-white/70">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               <p>For security and optimal user experience,</p>
               <p>mobile and tablet access is not supported.</p>
             </div>
@@ -109,184 +86,201 @@ const Login = () => {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex">
-      {/* Left Side - Login Form */}
-      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div className="text-center">
-            <div className="mx-auto h-16 w-16 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg mb-6">
-              <FiShield className="h-8 w-8 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      {/* Theme Toggle - Top Right */}
+      <div className="fixed top-6 right-6 z-50">
+        <ThemeToggle size="lg" />
+      </div>
+      
+      <div className="flex min-h-screen">
+        {/* Left Side - Company Details & Website Info */}
+        <div className="hidden lg:flex lg:w-1/2 items-center justify-center p-12">
+          <div className="max-w-lg">
+            {/* Company Logo/Brand */}
+            <div className="mb-8">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <FiShield className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">AttendancePro</h1>
+                  <p className="text-gray-600 dark:text-gray-400 text-lg">Employee Management System</p>
+                </div>
+              </div>
             </div>
-            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
-              Welcome Back
-            </h2>
-            <p className="text-gray-600 text-lg">
-              Sign in to your account
-            </p>
-            <p className="text-sm text-gray-500 mt-2">
-              X Company Attendance Management System
-            </p>
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8">
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm font-medium">{error}</p>
-                  </div>
+
+            {/* Company Description */}
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">Streamline Your Workforce Management</h2>
+              <p className="text-gray-600 dark:text-gray-400 text-lg leading-relaxed mb-6">
+                Experience the future of employee attendance tracking with our comprehensive 
+                management system. Boost productivity, enhance security, and simplify 
+                administrative tasks.
+              </p>
+            </div>
+
+            {/* Key Features */}
+            <div className="space-y-4 mb-8">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                  <FiUsers className="w-5 h-5 text-white" />
                 </div>
-              )}
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Employee Management</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">Comprehensive employee profiles and data management</p>
+                </div>
+              </div>
               
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      className={`w-full pl-10 pr-3 py-4 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-gray-900 placeholder-gray-500 ${
-                        formErrors.email ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter your email"
-                      value={formData.email}
-                      onChange={handleChange}
-                    />
-                  </div>
-                  {formErrors.email && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>
-                  )}
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                  <FiClock className="w-5 h-5 text-white" />
                 </div>
-
                 <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input
-                      id="password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      className={`w-full pl-10 pr-12 py-4 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-gray-900 placeholder-gray-500 ${
-                        formErrors.password ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter your password"
-                      value={formData.password}
-                      onChange={handleChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    >
-                      {showPassword ? (
-                        <FiEyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                      ) : (
-                        <FiEye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                      )}
-                    </button>
-                  </div>
-                  {formErrors.password && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>
-                  )}
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Smart Attendance</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">Real-time attendance tracking and reporting</p>
                 </div>
               </div>
-
-              <div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="group relative w-full flex justify-center py-4 px-4 border border-transparent text-lg font-semibold rounded-xl text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                >
-                  {loading ? (
-                    <LoadingSpinner size="sm" className="text-white" />
-                  ) : (
-                    <>
-                      <span className="absolute left-0 inset-y-0 flex items-center pl-3">
-                        <FiUser className="h-5 w-5 text-indigo-300 group-hover:text-indigo-200" />
-                      </span>
-                      Sign In
-                    </>
-                  )}
-                </button>
+              
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                  <FiTrendingUp className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">Analytics & Reports</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm">Advanced analytics and detailed reporting tools</p>
+                </div>
               </div>
+            </div>
 
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
-                  Don't have an account?{' '}
-                  <Link
-                    to="/register"
-                    className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors duration-200"
-                  >
-                    Create one now
-                  </Link>
-                </p>
+            {/* Contact Information */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-gray-700">
+              <h3 className="font-semibold mb-4 text-gray-900 dark:text-gray-100">Get in Touch</h3>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <FiMapPin className="w-4 h-4 text-blue-600" />
+                  <span className="text-gray-600 dark:text-gray-400 text-sm">123 Business Street, Tech City, TC 12345</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <FiPhone className="w-4 h-4 text-blue-600" />
+                  <span className="text-gray-600 dark:text-gray-400 text-sm">+1 (555) 123-4567</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <FiGlobe className="w-4 h-4 text-blue-600" />
+                  <span className="text-gray-600 dark:text-gray-400 text-sm">www.attendancepro.com</span>
+                </div>
               </div>
-            </form>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Right Side - Decorative */}
-      <div className="hidden lg:block lg:w-1/2 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        
-        {/* Animated Background Elements */}
-        <div className="absolute top-20 left-20 w-32 h-32 bg-white/10 rounded-full blur-xl animate-pulse"></div>
-        <div className="absolute top-40 right-20 w-24 h-24 bg-white/10 rounded-full blur-xl animate-pulse delay-1000"></div>
-        <div className="absolute bottom-20 left-32 w-40 h-40 bg-white/10 rounded-full blur-xl animate-pulse delay-2000"></div>
-        <div className="absolute bottom-40 right-32 w-28 h-28 bg-white/10 rounded-full blur-xl animate-pulse delay-3000"></div>
-        
-        {/* Content */}
-        <div className="relative h-full flex items-center justify-center">
-          <div className="text-center text-white">
-            <div className="mb-8">
-              <div className="mx-auto h-24 w-24 bg-white/20 backdrop-blur-sm rounded-3xl flex items-center justify-center shadow-2xl mb-6">
-                <FiShield className="h-12 w-12 text-white" />
-              </div>
-              <h1 className="text-5xl font-bold mb-4">X Company</h1>
-              <p className="text-xl text-white/90 mb-2">Attendance Management</p>
-              <p className="text-lg text-white/80">Professional • Secure • Efficient</p>
-            </div>
-            
-            <div className="space-y-4 text-left max-w-sm mx-auto">
-              <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-white/20 rounded-full flex items-center justify-center">
-                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+        {/* Right Side - Login Form */}
+        <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+          <div className="w-full max-w-lg">
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 p-10">
+              <form className="space-y-8" onSubmit={handleSubmit}>
+                {error && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-2xl flex items-center text-sm">
+                    <div className="flex-shrink-0">
+                      <svg className="h-4 w-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium">{error}</p>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="text-center mb-10">
+                  <div className="flex justify-center mb-6">
+                    <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-5 rounded-2xl shadow-lg">
+                      <FiShield className="w-10 h-10 text-white" />
+                    </div>
+                  </div>
+                  <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Welcome Back</h2>
+                  <p className="text-gray-600 dark:text-gray-400">Sign in to your account to continue</p>
                 </div>
-                <span className="text-white/90">Real-time attendance tracking</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-white/20 rounded-full flex items-center justify-center">
-                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+
+                <div className="space-y-6">
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <FiMail className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                      </div>
+                      <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                        placeholder="Enter your email"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <FiLock className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                      </div>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        id="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-12 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                        placeholder="Enter your password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        {showPassword ? (
+                          <FiEyeOff className="h-5 w-5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" />
+                        ) : (
+                          <FiEye className="h-5 w-5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-white/90">Advanced reporting & analytics</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-white/20 rounded-full flex items-center justify-center">
-                  <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+
+                <button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 px-6 rounded-2xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  Sign In
+                </button>
+
+                <div className="text-center">
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Forgot your password?{' '}
+                    <Link to="/forgot-password" className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold">
+                      Reset it here
+                    </Link>
+                  </p>
                 </div>
-                <span className="text-white/90">Secure employee management</span>
-              </div>
+              </form>
             </div>
           </div>
         </div>

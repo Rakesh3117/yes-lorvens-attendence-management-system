@@ -1,20 +1,24 @@
-const express = require('express');
+const express = require("express");
 const {
   getAllEmployees,
+  getNextEmployeeId,
+  getEmployeeDetails,
   createEmployee,
   updateEmployee,
   deleteEmployee,
   getAllAttendance,
+  getTodayAttendance,
   createManualAttendance,
   updateAttendance,
+  updateAttendanceStatus,
   getDashboardStats,
-} = require('../controllers/adminController');
+  getReports,
+  exportReports,
+  getLoggedInEmployees,
+  getAutoPunchOutStatus,
+} = require("../controllers/adminController");
 
-const {
-  protect,
-  requireAdmin,
-  desktopOnly,
-} = require('../middlewares/auth');
+const { protect, requireAdmin, desktopOnly } = require("../middlewares/auth");
 
 const {
   validateEmployeeCreation,
@@ -24,7 +28,7 @@ const {
   validateDateRange,
   validateDateRangeLogic,
   validateObjectId,
-} = require('../middlewares/validation');
+} = require("../middlewares/validation");
 
 const router = express.Router();
 
@@ -36,17 +40,48 @@ router.use(protect);
 router.use(requireAdmin);
 
 // Dashboard
-router.get('/dashboard', getDashboardStats);
+router.get("/dashboard", getDashboardStats);
 
 // Employee management
-router.get('/employees', getAllEmployees);
-router.post('/employees', validateEmployeeCreation, createEmployee);
-router.put('/employees/:id', validateObjectId, validateEmployeeUpdate, updateEmployee);
-router.delete('/employees/:id', validateObjectId, deleteEmployee);
+router.get("/employees", getAllEmployees);
+router.get("/employees/next-id", getNextEmployeeId);
+router.get("/employees/:id/details", validateObjectId, getEmployeeDetails);
+router.post("/employees", validateEmployeeCreation, createEmployee);
+router.put(
+  "/employees/:id",
+  validateObjectId,
+  validateEmployeeUpdate,
+  updateEmployee
+);
+router.delete("/employees/:id", validateObjectId, deleteEmployee);
 
 // Attendance management
-router.get('/attendance', validateDateRange, validateDateRangeLogic, getAllAttendance);
-router.post('/attendance', validateManualAttendanceEntry, createManualAttendance);
-router.put('/attendance/:id', validateObjectId, updateAttendance);
+router.get(
+  "/attendance",
+  validateDateRange,
+  validateDateRangeLogic,
+  getAllAttendance
+);
+router.get("/attendance/today", getTodayAttendance);
+router.post(
+  "/attendance",
+  validateManualAttendanceEntry,
+  createManualAttendance
+);
+router.put("/attendance/:id", validateObjectId, updateAttendance);
+router.post("/attendance/update-status", updateAttendanceStatus);
 
-module.exports = router; 
+// Reports
+router.get("/reports", validateDateRange, validateDateRangeLogic, getReports);
+router.get(
+  "/reports/export",
+  validateDateRange,
+  validateDateRangeLogic,
+  exportReports
+);
+
+// Auto Punch-Out Management
+router.get("/attendance/logged-in", getLoggedInEmployees);
+router.get("/attendance/auto-punchout/status", getAutoPunchOutStatus);
+
+module.exports = router;

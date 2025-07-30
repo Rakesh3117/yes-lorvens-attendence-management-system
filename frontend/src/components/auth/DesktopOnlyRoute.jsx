@@ -1,33 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useConfig } from '../../hooks/useConfig';
+import LoadingSpinner from '../common/LoadingSpinner';
 
 export const DesktopOnlyRoute = ({ children }) => {
-  const [isDesktop, setIsDesktop] = useState(true);
+  const { loading, shouldBlock, isMobile, acceptMobile } = useConfig();
 
-  useEffect(() => {
-    const checkDevice = () => {
-      const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-      const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
-      const isSmallScreen = window.innerWidth < 768;
-      
-      // Temporarily allow all devices for testing
-      setIsDesktop(true);
-      
-      // Original logic (commented out for testing):
-      // setIsDesktop(!isMobileDevice && !isSmallScreen);
-    };
+  // Show loading while checking configuration
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center">
+        <div className="text-center text-white">
+          <LoadingSpinner size="lg" className="text-white" />
+          <p className="mt-4 text-lg">Checking device compatibility...</p>
+        </div>
+      </div>
+    );
+  }
 
-    // Check on mount
-    checkDevice();
-
-    // Check on resize
-    window.addEventListener('resize', checkDevice);
-
-    return () => {
-      window.removeEventListener('resize', checkDevice);
-    };
-  }, []);
-
-  if (!isDesktop) {
+  // If mobile access should be blocked, show desktop-only message
+  if (shouldBlock) {
     return (
       <div className="fixed inset-0 z-50 bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center p-8">
         <div className="text-center text-white max-w-md">
@@ -37,6 +28,12 @@ export const DesktopOnlyRoute = ({ children }) => {
             This attendance management system is designed exclusively for desktop and laptop computers. 
             Mobile access is not supported for security and functionality reasons.
           </p>
+          <div className="bg-white bg-opacity-10 rounded-lg p-4 mb-4">
+            <p className="text-sm">
+              <strong>Device Type:</strong> Mobile<br/>
+              <strong>Mobile Access:</strong> {acceptMobile ? 'Allowed' : 'Blocked'}
+            </p>
+          </div>
           <p className="text-sm opacity-80">
             Please access this system from a desktop or laptop computer.
           </p>

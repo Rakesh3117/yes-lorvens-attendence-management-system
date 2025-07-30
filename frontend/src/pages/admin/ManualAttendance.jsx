@@ -1,311 +1,410 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
 import { FiArrowLeft, FiCalendar, FiClock, FiUser, FiFileText } from 'react-icons/fi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { LoadingSpinner, CustomInput, CustomDropdown } from '../../components/common';
+import { useCreateManualAttendance } from '../../hooks/useAttendance';
+import { useAllEmployees } from '../../hooks/useEmployees';
+import { useQueryClient } from '@tanstack/react-query';
+import { adminAPI } from '../../services/api/adminAPI';
 import toast from 'react-hot-toast';
 
 const ManualAttendance = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [employees, setEmployees] = useState([]);
-  const [formData, setFormData] = useState({
-    employeeId: '',
-    date: new Date().toISOString().split('T')[0],
-    punchIn: '',
-    punchOut: '',
-    reason: '',
+  const queryClient = useQueryClient();
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    reset,
+    setValue,
+    trigger,
+  } = useForm({
+    mode: 'onChange',
+    defaultValues: {
+      date: new Date().toISOString().split('T')[0],
+      reason: '',
+    },
+    resolver: (values) => {
+      const errors = {};
+      
+      if (!values.employeeId || values.employeeId === '') {
+        errors.employeeId = { type: 'required', message: 'Employee is required' };
+      }
+      
+      if (!values.date) {
+        errors.date = { type: 'required', message: 'Date is required' };
+      }
+      
+      if (!values.punchIn && !values.punchOut) {
+        errors.punchIn = { type: 'required', message: 'At least one punch time is required' };
+      }
+      
+      if (values.punchIn && values.punchOut && values.date) {
+        const punchInTime = new Date(`${values.date}T${values.punchIn}`);
+        const punchOutTime = new Date(`${values.date}T${values.punchOut}`);
+        if (punchInTime >= punchOutTime) {
+          errors.punchOut = { type: 'validate', message: 'Punch out time must be after punch in time' };
+        }
+      }
+      
+      return {
+        values,
+        errors: Object.keys(errors).length > 0 ? errors : {},
+      };
+    },
   });
 
-  const [formErrors, setFormErrors] = useState({});
+  const watchDate = watch('date');
+  const watchPunchIn = watch('punchIn');
+  const watchPunchOut = watch('punchOut');
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
+  // Get employees list
+  const { data: employeesData, isLoading: employeesLoading, error: employeesError } = useAllEmployees();
+  const employees = employeesData?.data?.employees || employeesData?.employees || [];
 
-  const fetchEmployees = async () => {
+  // Create manual attendance mutation
+  const createManualAttendanceMutation = useCreateManualAttendance();
+
+  // Convert employees to dropdown options
+  const employeeOptions = [
+    { value: '', label: 'Select Employee' },
+    ...employees.map((employee) => ({
+      value: employee._id,
+      label: `${employee.employeeId} - ${employee.name} (${employee.department})`
+    }))
+  ];
+
+  const onSubmit = async (data) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/employees?limit=1000`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch employees');
+      // Additional validation check
+      if (!data.employeeId || data.employeeId === '') {
+        toast.error('Please select an employee');
+        return;
       }
-
-      const data = await response.json();
-      setEmployees(data.data.employees);
-    } catch (err) {
-      toast.error('Failed to load employees');
-      console.error('Error fetching employees:', err);
-    }
-  };
-
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!formData.employeeId) errors.employeeId = 'Employee is required';
-    if (!formData.date) errors.date = 'Date is required';
-    
-    // Validate that at least one punch time is provided
-    if (!formData.punchIn && !formData.punchOut) {
-      errors.punchIn = 'At least one punch time is required';
-    }
-    
-    // Validate punch times if both are provided
-    if (formData.punchIn && formData.punchOut) {
-      const punchInTime = new Date(`${formData.date}T${formData.punchIn}`);
-      const punchOutTime = new Date(`${formData.date}T${formData.punchOut}`);
       
-      if (punchInTime >= punchOutTime) {
-        errors.punchOut = 'Punch out time must be after punch in time';
-      }
-    }
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
-    
-    try {
-      setLoading(true);
-      
-      // Find the employee by ID
-      const employee = employees.find(emp => emp._id === formData.employeeId);
-      if (!employee) {
-        throw new Error('Selected employee not found');
-      }
-
-      const attendanceData = {
-        employeeId: employee._id,
-        date: formData.date,
-        reason: formData.reason || 'Manual entry by admin',
+      // Convert time inputs to datetime strings with timezone offset
+      const submitData = {
+        ...data,
+        punchIn: data.punchIn ? `${data.date}T${data.punchIn}:00` : undefined,
+        punchOut: data.punchOut ? `${data.date}T${data.punchOut}:00` : undefined,
       };
 
-      if (formData.punchIn) {
-        attendanceData.punchIn = `${formData.date}T${formData.punchIn}`;
-      }
-
-      if (formData.punchOut) {
-        attendanceData.punchOut = `${formData.date}T${formData.punchOut}`;
-      }
-
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/attendance`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(attendanceData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create attendance entry');
-      }
-
-      toast.success('Manual attendance entry created successfully!');
-      navigate('/admin/attendance');
+      await createManualAttendanceMutation.mutateAsync(submitData);
+      reset();
+      navigate('/admin/attendance', { state: { fromManualAttendance: true } });
     } catch (err) {
-      toast.error(err.message || 'Failed to create attendance entry');
-      console.error('Error creating attendance entry:', err);
-    } finally {
-      setLoading(false);
+      // Error is handled by the mutation
     }
   };
 
+  const handleEmployeeChange = (e) => {
+    setValue('employeeId', e.target.value);
+    trigger('employeeId');
+  };
+
+  const handleDateChange = (e) => {
+    setValue('date', e.target.value);
+    trigger('date');
+  };
+
+  const handlePunchInChange = (e) => {
+    setValue('punchIn', e.target.value);
+    trigger('punchIn');
+    
+    // Auto-suggest punch out time (8 hours later)
+    if (e.target.value && !watchPunchOut) {
+      const punchInTime = new Date(`2000-01-01T${e.target.value}`);
+      const punchOutTime = new Date(punchInTime.getTime() + (8 * 60 * 60 * 1000)); // 8 hours
+      const suggestedTime = punchOutTime.toTimeString().slice(0, 5);
+      setValue('punchOut', suggestedTime);
+      trigger('punchOut');
+    }
+  };
+
+  const handlePunchOutChange = (e) => {
+    setValue('punchOut', e.target.value);
+    trigger('punchOut');
+  };
+
+  const handleReasonChange = (e) => {
+    setValue('reason', e.target.value);
+  };
+
+  // Show error if employees fail to load
+  if (employeesError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-8">
+            <button
+              onClick={() => navigate('/admin/attendance', { state: { fromManualAttendance: true } })}
+              className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 mb-4 transition-colors"
+            >
+              <FiArrowLeft className="w-4 h-4 mr-2" />
+              Back to Attendance
+            </button>
+          </div>
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded">
+            Failed to load employees. Please try again.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
-      <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/admin/attendance')}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
-              >
-                <FiArrowLeft className="w-4 h-4 mr-2" />
-                Back to Attendance
-              </button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Manual Attendance Entry</h1>
-                <p className="mt-1 text-sm text-gray-600">
-                  Create manual attendance records for employees
-                </p>
-              </div>
+        <div className="mb-8">
+          <button
+            onClick={() => navigate('/admin/attendance', { state: { fromManualAttendance: true } })}
+            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 mb-4 transition-colors"
+          >
+            <FiArrowLeft className="w-4 h-4 mr-2" />
+            Back to Attendance
+          </button>
+          <div className="flex items-center">
+            <div className="bg-indigo-100 dark:bg-indigo-900/50 p-3 rounded-lg mr-4">
+              <FiFileText className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Manual Attendance Entry</h1>
+              <p className="text-gray-600 dark:text-gray-400">Create a manual attendance record for an employee</p>
             </div>
           </div>
         </div>
 
         {/* Form */}
-        <div className="px-4 sm:px-0">
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-100">
-            <div className="px-6 py-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Employee */}
-                  <div>
-                    <label htmlFor="employeeId" className="block text-sm font-medium text-gray-700 mb-2">
-                      Employee *
-                    </label>
-                    <select
-                      id="employeeId"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.employeeId ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    >
-                      <option value="">Select Employee</option>
-                      {employees.map(employee => (
-                        <option key={employee._id} value={employee._id}>
-                          {employee.name} ({employee.employeeId}) - {employee.department}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.employeeId && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.employeeId}</p>
-                    )}
-                  </div>
-
-                  {/* Date */}
-                  <div>
-                    <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
-                      Date *
-                    </label>
-                    <div className="relative">
-                      <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="date"
-                        id="date"
-                        name="date"
-                        value={formData.date}
-                        onChange={handleChange}
-                        className={`w-full pl-10 pr-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                          formErrors.date ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                    </div>
-                    {formErrors.date && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.date}</p>
-                    )}
-                  </div>
-
-                  {/* Punch In Time */}
-                  <div>
-                    <label htmlFor="punchIn" className="block text-sm font-medium text-gray-700 mb-2">
-                      Punch In Time
-                    </label>
-                    <div className="relative">
-                      <FiClock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="time"
-                        id="punchIn"
-                        name="punchIn"
-                        value={formData.punchIn}
-                        onChange={handleChange}
-                        className={`w-full pl-10 pr-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                          formErrors.punchIn ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                    </div>
-                    {formErrors.punchIn && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.punchIn}</p>
-                    )}
-                  </div>
-
-                  {/* Punch Out Time */}
-                  <div>
-                    <label htmlFor="punchOut" className="block text-sm font-medium text-gray-700 mb-2">
-                      Punch Out Time
-                    </label>
-                    <div className="relative">
-                      <FiClock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                      <input
-                        type="time"
-                        id="punchOut"
-                        name="punchOut"
-                        value={formData.punchOut}
-                        onChange={handleChange}
-                        className={`w-full pl-10 pr-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                          formErrors.punchOut ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                    </div>
-                    {formErrors.punchOut && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.punchOut}</p>
-                    )}
-                  </div>
-
-                  {/* Reason */}
-                  <div className="md:col-span-2">
-                    <label htmlFor="reason" className="block text-sm font-medium text-gray-700 mb-2">
-                      Reason
-                    </label>
-                    <div className="relative">
-                      <FiFileText className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
-                      <textarea
-                        id="reason"
-                        name="reason"
-                        value={formData.reason}
-                        onChange={handleChange}
-                        rows={3}
-                        className="w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
-                        placeholder="Enter reason for manual entry (optional)"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/admin/attendance')}
-                    className="px-6 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="inline-flex items-center px-6 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    {loading ? (
-                      <LoadingSpinner size="sm" className="text-white mr-2" />
-                    ) : (
-                      <FiFileText className="w-4 h-4 mr-2" />
-                    )}
-                    Create Entry
-                  </button>
-                </div>
-              </form>
-            </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Attendance Information</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Fill in the attendance details below</p>
           </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Employee Selection */}
+              <div>
+                <CustomDropdown
+                  id="employeeId"
+                  name="employeeId"
+                  label="Employee"
+                  value={watch('employeeId') || ''}
+                  onChange={handleEmployeeChange}
+                  onBlur={() => trigger('employeeId')}
+                  options={employeeOptions}
+                  placeholder="Select Employee"
+                  disabled={employeesLoading}
+                  required={true}
+                  error={errors.employeeId?.message}
+                  icon={FiUser}
+                />
+                {employeesLoading && (
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Loading employees...</p>
+                )}
+              </div>
+
+              {/* Date */}
+              <div>
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Date
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiCalendar className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <input
+                    type="date"
+                    id="date"
+                    name="date"
+                    value={watchDate || ''}
+                    onChange={handleDateChange}
+                    className={`
+                      block w-full pl-10 pr-4 py-3 border rounded-lg text-sm transition-all duration-200
+                      focus:outline-none focus:ring-2 focus:ring-offset-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                      ${errors.date ? 'border-red-300 dark:border-red-600 focus:border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-300 dark:border-gray-600 focus:border-indigo-500 focus:ring-indigo-500 hover:border-gray-400 dark:hover:border-gray-500'}
+                    `}
+                    placeholder="Select date"
+                  />
+                </div>
+                {errors.date && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.date.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Punch In Time */}
+              <div>
+                <label htmlFor="punchIn" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Punch In Time
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiClock className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <input
+                    type="time"
+                    id="punchIn"
+                    name="punchIn"
+                    value={watchPunchIn || ''}
+                    onChange={handlePunchInChange}
+                    step={900}
+                    className={`
+                      block w-full pl-10 pr-4 py-3 border rounded-lg text-sm transition-all duration-200
+                      focus:outline-none focus:ring-2 focus:ring-offset-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                      ${errors.punchIn ? 'border-red-300 dark:border-red-600 focus:border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-300 dark:border-gray-600 focus:border-indigo-500 focus:ring-indigo-500 hover:border-gray-400 dark:hover:border-gray-500'}
+                    `}
+                    placeholder="Select punch in time"
+                  />
+                </div>
+                {errors.punchIn && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.punchIn.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Punch Out Time */}
+              <div>
+                <label htmlFor="punchOut" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Punch Out Time
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <FiClock className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <input
+                    type="time"
+                    id="punchOut"
+                    name="punchOut"
+                    value={watchPunchOut || ''}
+                    onChange={handlePunchOutChange}
+                    step={900}
+                    min={watchPunchIn || undefined}
+                    className={`
+                      block w-full pl-10 pr-4 py-3 border rounded-lg text-sm transition-all duration-200
+                      focus:outline-none focus:ring-2 focus:ring-offset-0 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                      ${errors.punchOut ? 'border-red-300 dark:border-red-600 focus:border-red-500 focus:ring-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-300 dark:border-gray-600 focus:border-indigo-500 focus:ring-indigo-500 hover:border-gray-400 dark:hover:border-gray-500'}
+                    `}
+                    placeholder="Select punch out time"
+                  />
+                </div>
+                {errors.punchOut && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400 flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {errors.punchOut.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Time Presets */}
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Quick Time Presets</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue('punchIn', '09:00');
+                    setValue('punchOut', '17:00');
+                    trigger(['punchIn', 'punchOut']);
+                  }}
+                  className="px-3 py-2 text-xs bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors text-gray-900 dark:text-gray-100"
+                >
+                  9:00 AM - 5:00 PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue('punchIn', '08:00');
+                    setValue('punchOut', '16:00');
+                    trigger(['punchIn', 'punchOut']);
+                  }}
+                  className="px-3 py-2 text-xs bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors text-gray-900 dark:text-gray-100"
+                >
+                  8:00 AM - 4:00 PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue('punchIn', '10:00');
+                    setValue('punchOut', '18:00');
+                    trigger(['punchIn', 'punchOut']);
+                  }}
+                  className="px-3 py-2 text-xs bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors text-gray-900 dark:text-gray-100"
+                >
+                  10:00 AM - 6:00 PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setValue('punchIn', '');
+                    setValue('punchOut', '');
+                    trigger(['punchIn', 'punchOut']);
+                  }}
+                  className="px-3 py-2 text-xs bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors text-red-600 dark:text-red-400"
+                >
+                  Clear Times
+                </button>
+              </div>
+            </div>
+
+            {/* Reason */}
+            <div>
+              <label htmlFor="reason" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Reason for Manual Entry
+              </label>
+              <textarea
+                id="reason"
+                name="reason"
+                rows={3}
+                value={watch('reason') || ''}
+                onChange={handleReasonChange}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                placeholder="Enter reason for manual attendance entry (optional)"
+              />
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => navigate('/admin/attendance', { state: { fromManualAttendance: true } })}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createManualAttendanceMutation.isPending || employeesLoading}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {createManualAttendanceMutation.isPending ? (
+                  <div className="flex items-center">
+                    <LoadingSpinner size="sm" className="text-white mr-2" />
+                    Creating...
+                  </div>
+                ) : (
+                  'Create Entry'
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

@@ -1,0 +1,36 @@
+2025-07-20 17:00:03:03 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:00:04:04 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:20:53:2053 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:37:00:370 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:38:20:3820 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:38:53:3853 [31merror[39m: [31mEmail sending failed: Invalid login: 535 Authentication failed[39m
+2025-07-20 17:46:41:4641 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials d9443c01a7336-23e3b611ff5sm41301825ad.75 - gsmtp[39m
+2025-07-20 17:46:41:4641 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 17:46:41:4641 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-20 17:49:31:4931 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials d2e1a72fcca58-759c84e244fsm4136182b3a.20 - gsmtp[39m
+2025-07-20 17:49:31:4931 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 17:49:31:4931 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-20 17:52:04:524 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials d2e1a72fcca58-759c84e2506sm4136013b3a.26 - gsmtp[39m
+2025-07-20 17:52:04:524 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 17:52:04:524 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-20 18:28:55:2855 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials d9443c01a7336-23e3b612373sm41709925ad.72 - gsmtp[39m
+2025-07-20 18:28:55:2855 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 18:28:55:2855 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-20 18:48:22:4822 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials 41be03b00d2f7-b3f2fe66216sm3799355a12.10 - gsmtp[39m
+2025-07-20 18:48:22:4822 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 18:48:22:4822 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-20 18:50:39:5039 [31merror[39m: [31mEmail sending failed: Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to[39m
+[31m535 5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-31cc3f2c708sm4468530a91.30 - gsmtp[39m
+2025-07-20 18:50:39:5039 [31merror[39m: [31mSMTP Authentication failed. Please check your email credentials in .env file[39m
+2025-07-20 18:50:39:5039 [31merror[39m: [31mFor Gmail: Ensure 2FA is enabled and you're using an App Password[39m
+2025-07-24 12:40:22:4022 [31merror[39m: [31mError updating request status: Request validation failed: endTime: Path `endTime` is required., startTime: Path `startTime` is required.[39m
+2025-07-24 12:41:16:4116 [31merror[39m: [31mError updating request status: Request validation failed: endTime: Path `endTime` is required., startTime: Path `startTime` is required.[39m
+2025-07-24 15:01:04:14 [31merror[39m: [31mError fetching all requests: Cast to ObjectId failed for value "104" (type string) at path "employeeId" for model "Request"[39m
+2025-07-24 16:08:49:849 [31merror[39m: [31mError creating status update notification: Cannot populate path `employee` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+2025-07-24 16:08:49:849 [31merror[39m: [31mError creating notification for status update: Cannot populate path `employee` because it is not in your schema. Set the `strictPopulate` option to false to override.[39m
+2025-07-26 00:21:06:216 [31merror[39m: [31mEmail sending failed: No recipients defined[39m

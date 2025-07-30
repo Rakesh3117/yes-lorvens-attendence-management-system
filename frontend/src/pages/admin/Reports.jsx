@@ -1,395 +1,514 @@
 import React, { useState, useEffect } from 'react';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { FiDownload, FiFilter, FiCalendar } from 'react-icons/fi';
+import CustomDropdown from '../../components/common/CustomDropdown';
+import { adminAPI } from '../../services/api/adminAPI';
+import { getStatusBadge } from '../../utils/helpers';
+import { useAuth } from '../../hooks/useAuth';
 
 const Reports = () => {
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { user } = useAuth();
+  const [reports, setReports] = useState({ results: [], loading: false, error: null });
+  const [employees, setEmployees] = useState({ results: [], loading: false, error: null });
+  
+  // Calculate default dates
+  const getDefaultDates = () => {
+    const today = new Date();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(today.getMonth() - 1);
+    
+    return {
+      startDate: oneMonthAgo.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0]
+    };
+  };
+
+  const defaultDates = getDefaultDates();
+  
   const [filters, setFilters] = useState({
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
-    department: '',
-    reportType: 'attendance',
+    startDate: defaultDates.startDate,
+    endDate: defaultDates.endDate,
+    department: 'all',
+    reportType: 'attendance'
   });
 
+  const departments = [
+    { value: 'all', label: 'All Departments' },
+    { value: 'ENGINEERING', label: 'Engineering' },
+    { value: 'MARKETING', label: 'Marketing' },
+    { value: 'SALES', label: 'Sales' },
+    { value: 'HR', label: 'HR' },
+    { value: 'FINANCE', label: 'Finance' },
+    { value: 'MANAGEMENT', label: 'Management' },
+    { value: 'IT', label: 'IT' },
+    { value: 'OPERATIONS', label: 'Operations' }
+  ];
+
+  const reportTypes = [
+    { value: 'attendance', label: 'Attendance Summary' },
+    { value: 'late', label: 'Late Arrivals' } 
+  ];
+
+  // Fetch all employees
+  const fetchEmployees = async () => {
+    setEmployees(prev => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const params = {
+        limit: 1000, // Get all employees
+        status: 'active' // Only active employees
+      };
+      
+      // Ensure department is a string and not an object
+      const departmentFilter = typeof filters.department === 'object' && filters.department?.target?.value 
+        ? filters.department.target.value 
+        : filters.department;
+      
+      // Debug logging
+      if (typeof filters.department === 'object') {
+        console.warn('Department filter is an object:', filters.department);
+      }
+      
+      if (departmentFilter && departmentFilter !== 'all') {
+        params.department = departmentFilter;
+      }
+
+      const response = await adminAPI.getAllEmployees(params);
+      setEmployees({
+        results: response.data.data.employees || [],
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      setEmployees({
+        results: [],
+        loading: false,
+        error: error.response?.data?.error || 'Failed to fetch employees'
+      });
+    }
+  };
+
+  // Fetch reports data
+  const fetchReports = async () => {
+    if (!filters.startDate || !filters.endDate) return;
+
+    setReports(prev => ({ ...prev, loading: true, error: null }));
+
+    try {
+      // Ensure department is a string and not an object
+      const departmentFilter = typeof filters.department === 'object' && filters.department?.target?.value 
+        ? filters.department.target.value 
+        : filters.department;
+      
+      // Check if we're looking at today's date
+      const today = new Date().toISOString().split('T')[0];
+      const isToday = filters.startDate === today && filters.endDate === today;
+      
+      let response;
+      
+      if (isToday) {
+        // Use getTodayAttendance for today's date to ensure consistency
+        console.log('Using getTodayAttendance for today');
+        response = await adminAPI.getTodayAttendance(today);
+        
+        console.log('getTodayAttendance response:', response.data);
+        
+        // Transform the response to match the reports format
+        const transformedResults = response.data.data.employees.map(employee => ({
+          _id: {
+            employeeId: employee.employeeId,
+            name: employee.name,
+            department: employee.department,
+            date: today
+          },
+          status: employee.status,
+          totalHours: employee.totalHours,
+          punchIn: employee.punchIn,
+          punchOut: employee.punchOut
+        }));
+        
+        console.log('Transformed results:', transformedResults);
+        
+        response.data.data.results = transformedResults;
+      } else {
+        // Use getReports for historical dates
+        console.log('Using getReports for historical dates');
+        response = await adminAPI.getReports({
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          department: departmentFilter === 'all' ? '' : departmentFilter,
+          reportType: filters.reportType
+        });
+      }
+
+      console.log('Reports API response:', response.data);
+      
+      // Debug: Check for E-104 specifically
+      const e104Records = response.data.data.results?.filter(record => 
+        record._id.employeeId === 'E-104'
+      ) || [];
+      console.log('E-104 records in response:', e104Records);
+
+      setReports({
+        results: response.data.data.results || [],
+        loading: false,
+        error: null
+      });
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      setReports({
+        results: [],
+        loading: false,
+        error: error.response?.data?.error || 'Failed to fetch reports'
+      });
+    }
+  };
+
+  // Fetch employees and reports when filters change
   useEffect(() => {
-    fetchReports();
+    fetchEmployees();
+    if (filters.startDate && filters.endDate) {
+      fetchReports();
+    }
   }, [filters]);
 
-  const fetchReports = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        reportType: filters.reportType,
-      });
 
-      if (filters.department) params.append('department', filters.department);
 
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/reports?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch reports');
-      }
-
-      const data = await response.json();
-      setReports(data.data);
-    } catch (err) {
-      setError('Failed to load reports');
-      console.error('Error fetching reports:', err);
-    } finally {
-      setLoading(false);
-    }
+  // Format duration
+  const formatDuration = (hours) => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}h ${m}m`;
   };
 
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleExport = async (format = 'csv') => {
-    try {
-      const params = new URLSearchParams({
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        reportType: filters.reportType,
-        format,
-      });
-
-      if (filters.department) params.append('department', filters.department);
-
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/reports/export?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to export report');
-      }
-
-      alert(`Report exported successfully in ${format.toUpperCase()} format`);
-    } catch (err) {
-      setError('Failed to export report');
-      console.error('Error exporting report:', err);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+  // Format time
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '-';
+    return new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
     });
   };
 
-  if (loading) {
+  // Get status badge
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      present: { color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300', text: 'Present' },
+      absent: { color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300', text: 'Absent' },
+      late: { color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300', text: 'Late' },
+      'half-day': { color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300', text: 'Half Day' },
+      leave: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300', text: 'Leave' },
+      'work-from-home': { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300', text: 'WFH' },
+      'on-duty': { color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300', text: 'On Duty' },
+      'sick-leave': { color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300', text: 'Sick Leave' },
+      holiday: { color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300', text: 'Holiday' },
+      login: { color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300', text: 'Login' },
+      logout: { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', text: 'Logout' },
+      'no-records': { color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400', text: 'No Records' },
+      penalty: { color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300', text: 'Penalty' },
+      completed: { color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300', text: 'Completed' },
+      'punched-in': { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300', text: 'Punched In' },
+      'not-started': { color: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400', text: 'Not Started' }
+    };
+
+    const config = statusConfig[status] || { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', text: status };
+
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+        {config.text}
+      </span>
     );
-  }
+  };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Reports & Analytics</h1>
-              <p className="mt-1 text-sm text-gray-600">
-                Generate and view attendance reports and analytics
-              </p>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => handleExport('csv')}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export CSV
-              </button>
-              <button
-                onClick={() => handleExport('pdf')}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export PDF
-              </button>
-            </div>
-          </div>
-        </div>
+  // Generate employee rows with attendance data for each date
+  const generateEmployeeRows = () => {
+    if (!employees.results || employees.results.length === 0) return [];
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 px-4 sm:px-0">
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          </div>
-        )}
+    console.log('Employees results:', employees.results);
+    console.log('Reports results:', reports.results);
 
-        {/* Filters */}
-        <div className="px-4 sm:px-0 mb-6">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Report Filters
-              </h3>
+    // Group attendance records by employee
+    const attendanceMap = {};
+    if (reports.results && reports.results.length > 0) {
+      console.log('Reports API response structure:', reports.results[0]);
+      reports.results.forEach(record => {
+        const employeeId = record._id.employeeId;
+        const date = record._id.date;
+        if (!attendanceMap[employeeId]) {
+          attendanceMap[employeeId] = {};
+        }
+        attendanceMap[employeeId][date] = record;
+      });
+      console.log('Attendance map:', attendanceMap);
+    }
+
+    const rows = [];
+    const startDate = new Date(filters.startDate + 'T00:00:00');
+    const endDate = new Date(filters.endDate + 'T00:00:00');
+
+    employees.results.forEach(employee => {
+      console.log(`Processing employee: ${employee.name} (${employee.employeeId})`);
+      console.log(`Employee attendance data:`, attendanceMap[employee.employeeId]);
+      
+      // Employee row
+      const employeeRow = (
+        <tr key={`${employee._id}-main`} className="hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100 sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-200 dark:border-gray-600">
+            <div className="flex items-center">
+              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-purple-400 flex items-center justify-center mr-3">
+                <span className="text-xs font-medium text-white">
+                  {employee.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div>
+                <div className="font-medium">{employee.name}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">ID: {employee.employeeId}</div>
+              </div>
+            </div>
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 sticky left-32 bg-white dark:bg-gray-800 z-10 border-r border-gray-200 dark:border-gray-600">
+            {employee.department}
+          </td>
+                      {(() => {
+              // Generate date array from end date to start date (reverse order)
+              const dateArray = [];
+              let currentDate = new Date(endDate);
+              while (currentDate >= startDate) {
+                dateArray.push(new Date(currentDate));
+                // Create a new date object to avoid mutation issues
+                currentDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+              }
+
+              return dateArray.map(currentDate => {
+              const dateStr = currentDate.toISOString().split('T')[0];
+              const record = attendanceMap[employee.employeeId]?.[dateStr];
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    id="startDate"
-                    name="startDate"
-                    value={filters.startDate}
-                    onChange={handleFilterChange}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
+              // Debug logging for E-104
+              if (employee.employeeId === 'E-104') {
+                console.log(`E-104 for date ${dateStr}:`, record);
+              }
 
-                <div>
-                  <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    id="endDate"
-                    name="endDate"
-                    value={filters.endDate}
-                    onChange={handleFilterChange}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="department" className="block text-sm font-medium text-gray-700">
-                    Department
-                  </label>
-                  <select
-                    id="department"
-                    name="department"
-                    value={filters.department}
-                    onChange={handleFilterChange}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  >
-                    <option value="">All Departments</option>
-                    <option value="IT">IT</option>
-                    <option value="HR">HR</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Sales">Sales</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="reportType" className="block text-sm font-medium text-gray-700">
-                    Report Type
-                  </label>
-                  <select
-                    id="reportType"
-                    name="reportType"
-                    value={filters.reportType}
-                    onChange={handleFilterChange}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  >
-                    <option value="attendance">Attendance Summary</option>
-                    <option value="late">Late Arrivals</option>
-                    <option value="overtime">Overtime Report</option>
-                    <option value="department">Department Summary</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Summary Cards */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Total Days */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
+              return (
+                <td key={dateStr} className="px-3 py-4 text-center border-r border-gray-200 dark:border-gray-600 min-w-[120px]">
+                  {record ? (
+                    <div className="flex flex-col items-center space-y-2">
+                      {/* Attendance Status */}
+                      <div className="w-full">
+                        {getStatusBadge(record.status)}
+                      </div>
+                      
+                      {/* Total Work Hours */}
+                      <div className="w-full">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {formatDuration(record.totalHours || 0)}
+                        </div>
+                        {record.punchIn && record.punchOut && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            <div>{formatTime(record.punchIn)} - {formatTime(record.punchOut)}</div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Total Days
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {reports.totalDays || 0}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Present Days */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Present Days
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {reports.presentDays || 0}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Absent Days */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Absent Days
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {reports.absentDays || 0}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Total Hours */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        Total Hours
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {reports.totalHours ? `${reports.totalHours.toFixed(1)}h` : '0h'}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Report Content */}
-        <div className="px-4 sm:px-0">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                Report Details
-              </h3>
-              
-              <div className="bg-gray-50 rounded-lg p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
-                      Date Range
-                    </h4>
-                    <p className="text-sm text-gray-900">
-                      {formatDate(filters.startDate)} - {formatDate(filters.endDate)}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
-                      Report Type
-                    </h4>
-                    <p className="text-sm text-gray-900 capitalize">
-                      {filters.reportType.replace('-', ' ')} Report
-                    </p>
-                  </div>
-                  
-                  {filters.department && (
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
-                        Department
-                      </h4>
-                      <p className="text-sm text-gray-900">
-                        {filters.department}
-                      </p>
+                  ) : (
+                    <div className="flex flex-col items-center space-y-2">
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">No Record</span>
+                      <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>
                     </div>
                   )}
-                  
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
-                      Generated On
-                    </h4>
-                    <p className="text-sm text-gray-900">
-                      {formatDate(new Date())}
-                    </p>
-                  </div>
-                </div>
-              </div>
+                </td>
+              );
+            });
+          })()}
+        </tr>
+      );
+      rows.push(employeeRow);
+    });
 
-              {/* Additional report content would go here based on the report type */}
-              <div className="mt-6">
-                <p className="text-sm text-gray-600">
-                  This is a sample report view. In a real application, this would display detailed analytics, 
-                  charts, and specific data based on the selected report type and filters.
-                </p>
-              </div>
-            </div>
+    return rows;
+  };
+
+  // Generate date headers from end date to start date (reverse order)
+  const generateDateHeaders = () => {
+    if (!filters.startDate || !filters.endDate) return [];
+
+    const startDate = new Date(filters.startDate + 'T00:00:00');
+    const endDate = new Date(filters.endDate + 'T00:00:00');
+
+    console.log('Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+
+    const dateHeaders = [];
+    let currentDate = new Date(endDate);
+
+    while (currentDate >= startDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      console.log('Processing date:', dateStr);
+      dateHeaders.push(
+        <th key={dateStr} className="px-3 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px] border-r border-gray-200 dark:border-gray-600">
+          <div className="flex flex-col">
+            <span className="font-semibold">{currentDate.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+            <span className="text-xs">{currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+          </div>
+        </th>
+      );
+      // Create a new date object to avoid mutation issues
+      currentDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    return dateHeaders;
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Page Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Reports</h1>
+        <button
+          onClick={() => {/* Export functionality */}}
+          className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200"
+        >
+          <FiDownload className="w-4 h-4 mr-2" />
+          Export Report
+        </button>
+      </div>
+
+      {/* Report Filters */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Report Filters</h2>
+          <button
+            onClick={() => {
+              const today = new Date().toISOString().split('T')[0];
+              setFilters(prev => ({
+                ...prev,
+                startDate: today,
+                endDate: today
+              }));
+            }}
+            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:text-blue-300 dark:bg-blue-900 dark:hover:bg-blue-800"
+          >
+            <FiCalendar className="w-4 h-4 mr-2" />
+            Today
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Start Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* End Date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Department */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Department
+            </label>
+            <CustomDropdown
+              options={departments}
+              value={filters.department}
+              onChange={(value) => {
+                // Ensure we get the actual value, not an event object
+                const actualValue = typeof value === 'object' && value?.target?.value 
+                  ? value.target.value 
+                  : value;
+                setFilters(prev => ({ ...prev, department: actualValue }));
+              }}
+              placeholder="Select department"
+              className="w-full"
+            />
+          </div>
+
+          {/* Report Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Report Type
+            </label>
+            <CustomDropdown
+              options={reportTypes}
+              value={filters.reportType}
+              onChange={(value) => {
+                // Ensure we get the actual value, not an event object
+                const actualValue = typeof value === 'object' && value?.target?.value 
+                  ? value.target.value 
+                  : value;
+                setFilters(prev => ({ ...prev, reportType: actualValue }));
+              }}
+              placeholder="Select report type"
+              className="w-full"
+            />
           </div>
         </div>
       </div>
+
+
+
+      {/* Reports Table */}
+      {filters.startDate && filters.endDate && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {employees.results.length} employees found
+            </h3>
+          </div>
+
+          {(reports.loading || employees.loading) ? (
+            <div className="p-6 text-center">
+              <div className="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-white bg-blue-500 hover:bg-blue-400 transition ease-in-out duration-150 cursor-not-allowed">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Loading...
+              </div>
+            </div>
+          ) : (reports.error || employees.error) ? (
+            <div className="p-6 text-center">
+              <p className="text-red-600 dark:text-red-400">{reports.error || employees.error}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full border border-gray-200 dark:border-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-700 z-20 border-r border-gray-200 dark:border-gray-600">
+                      Employee Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-32 bg-gray-50 dark:bg-gray-700 z-20 border-r border-gray-200 dark:border-gray-600">
+                      Department
+                    </th>
+                    {generateDateHeaders()}
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800">
+                  {generateEmployeeRows()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

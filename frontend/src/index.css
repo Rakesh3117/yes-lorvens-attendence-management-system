@@ -2,6 +2,302 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Flowbite Datepicker Styles */
+/* @import "flowbite-datepicker/dist/css/datepicker.css"; */
+
+/* Modal scroll prevention */
+body.modal-open {
+  overflow: hidden !important;
+  position: fixed;
+  width: 100%;
+}
+
+/* Custom animations for toggle effects */
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation-fill-mode: both;
+}
+
+.slide-in-from-top-1 {
+  animation: slideInFromTop 0.15s ease-out;
+}
+
+.slide-in-from-top-2 {
+  animation: slideInFromTop 0.2s ease-out;
+}
+
+.scale-in {
+  animation: scaleIn 0.15s ease-out;
+}
+
+/* Dark mode styles for Flowbite datepicker */
+.dark .datepicker-picker {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+.dark .datepicker-picker .datepicker-header {
+  background-color: #374151 !important;
+  border-bottom-color: #4b5563 !important;
+}
+
+.dark .datepicker-picker .datepicker-title {
+  color: #f9fafb !important;
+}
+
+.dark .datepicker-picker .datepicker-controls {
+  background-color: #374151 !important;
+}
+
+.dark .datepicker-picker .datepicker-view {
+  background-color: #1f2937 !important;
+}
+
+.dark .datepicker-picker .datepicker-grid {
+  background-color: #1f2937 !important;
+}
+
+.dark .datepicker-picker .datepicker-cell {
+  color: #f9fafb !important;
+  background-color: #1f2937 !important;
+}
+
+.dark .datepicker-picker .datepicker-cell:hover {
+  background-color: #374151 !important;
+}
+
+.dark .datepicker-picker .datepicker-cell.selected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.dark .datepicker-picker .datepicker-cell.focused {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.dark .datepicker-picker .datepicker-cell.disabled {
+  color: #6b7280 !important;
+  background-color: #374151 !important;
+}
+
+.dark .datepicker-picker .datepicker-cell.prev,
+.dark .datepicker-picker .datepicker-cell.next {
+  color: #9ca3af !important;
+}
+
+.dark .datepicker-picker .datepicker-cell.today {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.dark .datepicker-picker .datepicker-footer {
+  background-color: #374151 !important;
+  border-top-color: #4b5563 !important;
+}
+
+.dark .datepicker-picker .datepicker-controls button {
+  color: #f9fafb !important;
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+}
+
+.dark .datepicker-picker .datepicker-controls button:hover {
+  background-color: #4b5563 !important;
+}
+
+.dark .datepicker-picker .datepicker-controls button:focus {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .dow {
+  color: #9ca3af !important;
+  background-color: #374151 !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .date {
+  color: #f9fafb !important;
+  background-color: #1f2937 !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .date:hover {
+  background-color: #374151 !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .date.selected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .date.today {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.dark .datepicker-picker .datepicker-view .days .date.disabled {
+  color: #6b7280 !important;
+  background-color: #374151 !important;
+}
+
+/* Additional dark mode styles for datepicker container */
+.dark .datepicker {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark .datepicker-dropdown {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+.dark .datepicker-dropdown::before {
+  border-bottom-color: #374151 !important;
+}
+
+.dark .datepicker-dropdown::after {
+  border-bottom-color: #1f2937 !important;
+}
+
+/* Ensure proper z-index for dark mode */
+.dark .datepicker-picker {
+  z-index: 1050 !important;
+}
+
+/* Force dark mode styles to be applied */
+.datepicker-picker.dark {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f9fafb !important;
+}
+
+.datepicker-picker.dark .datepicker-header {
+  background-color: #374151 !important;
+  border-bottom-color: #4b5563 !important;
+}
+
+.datepicker-picker.dark .datepicker-title {
+  color: #f9fafb !important;
+}
+
+.datepicker-picker.dark .datepicker-controls {
+  background-color: #374151 !important;
+}
+
+.datepicker-picker.dark .datepicker-view {
+  background-color: #1f2937 !important;
+}
+
+.datepicker-picker.dark .datepicker-grid {
+  background-color: #1f2937 !important;
+}
+
+.datepicker-picker.dark .datepicker-cell {
+  color: #f9fafb !important;
+  background-color: #1f2937 !important;
+}
+
+.datepicker-picker.dark .datepicker-cell:hover {
+  background-color: #374151 !important;
+}
+
+.datepicker-picker.dark .datepicker-cell.selected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.datepicker-picker.dark .datepicker-cell.focused {
+  background-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.datepicker-picker.dark .datepicker-cell.disabled {
+  color: #6b7280 !important;
+  background-color: #374151 !important;
+}
+
+.datepicker-picker.dark .datepicker-cell.prev,
+.datepicker-picker.dark .datepicker-cell.next {
+  color: #9ca3af !important;
+}
+
+.datepicker-picker.dark .datepicker-cell.today {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.datepicker-picker.dark .datepicker-footer {
+  background-color: #374151 !important;
+  border-top-color: #4b5563 !important;
+}
+
+.datepicker-picker.dark .datepicker-controls button {
+  color: #f9fafb !important;
+  background-color: #374151 !important;
+  border-color: #4b5563 !important;
+}
+
+.datepicker-picker.dark .datepicker-controls button:hover {
+  background-color: #4b5563 !important;
+}
+
+.datepicker-picker.dark .datepicker-controls button:focus {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .dow {
+  color: #9ca3af !important;
+  background-color: #374151 !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .date {
+  color: #f9fafb !important;
+  background-color: #1f2937 !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .date:hover {
+  background-color: #374151 !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .date.selected {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .date.today {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.datepicker-picker.dark .datepicker-view .days .date.disabled {
+  color: #6b7280 !important;
+  background-color: #374151 !important;
+}
+
 /* Custom base styles */
 @layer base {
   html {
@@ -9,22 +305,16 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200;
   }
   
   * {
-    @apply border-gray-200;
+    @apply border-gray-200 dark:border-gray-700;
   }
 }
 
 /* Custom component styles */
 @layer components {
-  .background-color{
-    @apply bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg;
-  }
-  .text-background-color{
-    @apply bg-gradient-to-r from-indigo-600 to-purple-600;
-  }
   .btn {
     @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200;
   }
@@ -34,7 +324,7 @@
   }
   
   .btn-secondary {
-    @apply btn bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-primary-500;
+    @apply btn bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 focus:ring-primary-500;
   }
   
   .btn-success {
@@ -58,7 +348,7 @@
   }
   
   .input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm;
+    @apply block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm;
   }
   
   .input-error {
@@ -66,11 +356,11 @@
   }
   
   .card {
-    @apply bg-white overflow-hidden shadow-soft rounded-lg;
+    @apply bg-white dark:bg-gray-800 overflow-hidden shadow-soft rounded-lg;
   }
   
   .card-header {
-    @apply px-6 py-4 border-b border-gray-200 bg-gray-50;
+    @apply px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700;
   }
   
   .card-body {
@@ -82,23 +372,23 @@
   }
   
   .table-header {
-    @apply bg-gray-50;
+    @apply bg-gray-50 dark:bg-gray-700;
   }
   
   .table-header th {
-    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
+    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider;
   }
   
   .table-body {
-    @apply bg-white divide-y divide-gray-200;
+    @apply bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700;
   }
   
   .table-row {
-    @apply hover:bg-gray-50 transition-colors duration-150;
+    @apply hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150;
   }
   
   .table-cell {
-    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
+    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100;
   }
   
   .badge {
@@ -240,6 +530,7 @@
   
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
   
   .scrollbar-thin::-webkit-scrollbar-track {
@@ -249,9 +540,24 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: rgb(156 163 175);
     border-radius: 3px;
+    border: 1px solid transparent;
+    background-clip: content-box;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(107 114 128);
+    background-clip: content-box;
+  }
+  
+  .dark .scrollbar-thin {
+    scrollbar-color: rgb(75 85 99) transparent;
+  }
+  
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(75 85 99);
+  }
+  
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: rgb(107 114 128);
   }
 }
@@ -321,15 +627,111 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgb(156 163 175);
   border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-} 
+  background: rgb(107 114 128);
+  background-clip: content-box;
+}
 
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(75 85 99);
+  background-clip: content-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgb(107 114 128);
+  background-clip: content-box;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 163 175) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgb(75 85 99) transparent;
+}
+
+/* Custom scrollbar utilities */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 163 175) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(156 163 175);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+  background-clip: content-box;
+}
+
+.dark .scrollbar-thin {
+  scrollbar-color: rgb(75 85 99) transparent;
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
+}
+
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(107 114 128);
+}
+
+/* Smooth scrolling for better UX */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for specific components */
+.scrollbar-primary {
+  scrollbar-color: rgb(59 130 246) transparent;
+}
+
+.scrollbar-primary::-webkit-scrollbar-thumb {
+  background-color: rgb(59 130 246);
+}
+
+.scrollbar-primary::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(37 99 235);
+}
+
+.dark .scrollbar-primary {
+  scrollbar-color: rgb(96 165 250) transparent;
+}
+
+.dark .scrollbar-primary::-webkit-scrollbar-thumb {
+  background-color: rgb(96 165 250);
+}
+
+.dark .scrollbar-primary::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(147 197 253);
+} 

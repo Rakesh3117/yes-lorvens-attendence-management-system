@@ -1,139 +1,192 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
+import React, { useState, useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  FiUser, 
+  FiMail, 
+  FiShield, 
+  FiCalendar, 
+  FiClock, 
+  FiMapPin, 
+  FiEdit3, 
+  FiSave, 
+  FiLock, 
+  FiEye, 
+  FiEyeOff,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiArrowLeft,
+  FiSettings,
+  FiKey,
+  FiHash,
+  FiPhone,
+  FiDroplet,
+  FiChevronDown
+} from 'react-icons/fi';
+import { LoadingSpinner } from '../../components/common';
+import { updateProfile, changePassword, clearError } from '../../store/slices/authSlice';
+import toast from 'react-hot-toast';
+
+// Custom Glass Dropdown Component for Blood Group
+const GlassDropdown = ({ options, value, onChange, placeholder, name, error, className = '' }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedOption, setSelectedOption] = useState(options.find(opt => opt.value === value));
+  const [dropdownDirection, setDropdownDirection] = useState('down');
+  const dropdownRef = useRef(null);
+
+  const handleSelect = (option) => {
+    setSelectedOption(option);
+    onChange({ target: { name, value: option.value } });
+    setIsOpen(false);
+  };
+
+  const handleToggle = () => {
+    if (!isOpen) {
+      // Calculate available space when opening
+      const rect = dropdownRef.current?.getBoundingClientRect();
+      if (rect) {
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const dropdownHeight = Math.min(options.length * 48, 240); // Approximate height
+        
+        if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+          setDropdownDirection('up');
+        } else {
+          setDropdownDirection('down');
+        }
+      }
+    }
+    setIsOpen(!isOpen);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={handleToggle}
+        className={`w-full px-4 py-3 border-2 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-left bg-white dark:bg-gray-700 dark:text-white ${className} ${error ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'}`}
+      >
+        <span className={`block truncate ${!selectedOption ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+          {selectedOption ? selectedOption.label : placeholder}
+        </span>
+        <FiChevronDown className={`absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {isOpen && (
+        <div className={`absolute z-[9999] w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl dark:shadow-gray-900/50 max-h-60 overflow-auto scrollbar-thin ${
+          dropdownDirection === 'up' 
+            ? 'bottom-full mb-1' 
+            : 'top-full mt-1'
+        }`}>
+          {options.map((option, index) => (
+            <div key={option.value}>
+            <button
+              type="button"
+              onClick={() => handleSelect(option)}
+                className={`w-full px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus:bg-blue-50 dark:focus:bg-blue-900/20 focus:outline-none ${
+                  option.value === value ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100 font-medium' : 'text-gray-700 dark:text-gray-300'
+                } ${option.value === '' ? 'text-gray-400 dark:text-gray-500' : ''}`}
+            >
+              {option.label}
+            </button>
+              {index < options.length - 1 && (
+                <div className="border-b border-gray-200 dark:border-gray-600 mx-3"></div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {error && (
+        <p className="text-sm text-red-600 dark:text-red-400 flex items-center mt-1">
+          <FiAlertCircle className="w-4 h-4 mr-1" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+};
 
 const Profile = () => {
-  const { user, updateProfile, changePassword, loading, error, clearError } = useAuth();
+  const dispatch = useDispatch();
+  const { user, isLoading, error } = useSelector((state) => state.auth);
   
-  const [profileData, setProfileData] = useState({
-    name: '',
-    department: '',
-  });
-  
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
-  });
-  
-  const [profileErrors, setProfileErrors] = useState({});
-  const [passwordErrors, setPasswordErrors] = useState({});
   const [profileLoading, setProfileLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+
+  const {
+    register: registerProfile,
+    handleSubmit: handleProfileSubmit,
+    formState: { errors: profileErrors, isDirty: profileIsDirty },
+    reset: resetProfile,
+    watch: watchProfile,
+    setValue: setProfileValue,
+  } = useForm({
+    mode: 'onChange',
+  });
+
+  const {
+    register: registerPassword,
+    handleSubmit: handlePasswordSubmit,
+    formState: { errors: passwordErrors, isDirty: passwordIsDirty },
+    reset: resetPassword,
+    watch,
+  } = useForm({
+    mode: 'onChange',
+  });
+
+  const watchNewPassword = watch('newPassword');
 
   useEffect(() => {
     if (user) {
-      setProfileData({
+      resetProfile({
         name: user.name || '',
         department: user.department || '',
+        mobileNumber: user.mobileNumber || '',
+        addressLine: user.addressLine || '',
+        bloodGroup: user.bloodGroup || '',
       });
     }
-  }, [user]);
+  }, [user, resetProfile]);
 
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(() => clearError(), 5000);
+      toast.error(error);
+      const timer = setTimeout(() => dispatch(clearError()), 5000);
       return () => clearTimeout(timer);
     }
-  }, [error, clearError]);
+  }, [error, dispatch]);
 
-  const validateProfileForm = () => {
-    const errors = {};
-    
-    if (!profileData.name.trim()) errors.name = 'Name is required';
-    if (!profileData.department.trim()) errors.department = 'Department is required';
-    
-    setProfileErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const validatePasswordForm = () => {
-    const errors = {};
-    
-    if (!passwordData.currentPassword) errors.currentPassword = 'Current password is required';
-    if (!passwordData.newPassword) errors.newPassword = 'New password is required';
-    else if (passwordData.newPassword.length < 8) errors.newPassword = 'Password must be at least 8 characters';
-    else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(passwordData.newPassword)) {
-      errors.newPassword = 'Password must contain uppercase, lowercase, and number';
-    }
-    
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      errors.confirmPassword = 'Passwords do not match';
-    }
-    
-    setPasswordErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleProfileChange = (e) => {
-    const { name, value } = e.target;
-    setProfileData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    if (profileErrors[name]) {
-      setProfileErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handlePasswordChange = (e) => {
-    const { name, value } = e.target;
-    setPasswordData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    if (passwordErrors[name]) {
-      setPasswordErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handleProfileSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateProfileForm()) return;
-    
+  const onProfileSubmit = async (data) => {
     try {
       setProfileLoading(true);
-      await updateProfile(profileData);
-      alert('Profile updated successfully!');
+      await dispatch(updateProfile(data)).unwrap();
+      toast.success('Profile updated successfully!');
     } catch (err) {
-      // Error is handled by the context
+      // Error is handled by Redux
     } finally {
       setProfileLoading(false);
     }
   };
 
-  const handlePasswordSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validatePasswordForm()) return;
-    
+  const onPasswordSubmit = async (data) => {
     try {
       setPasswordLoading(true);
-      await changePassword({
-        currentPassword: passwordData.currentPassword,
-        newPassword: passwordData.newPassword,
-      });
+      await dispatch(changePassword({
+        currentPassword: data.currentPassword,
+        newPassword: data.newPassword,
+        confirmPassword: data.confirmPassword,
+      })).unwrap();
       
       // Clear form
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-      });
-      
-      alert('Password changed successfully!');
+      resetPassword();
+      toast.success('Password changed successfully!');
     } catch (err) {
-      // Error is handled by the context
+      // Error is handled by Redux
     } finally {
       setPasswordLoading(false);
     }
@@ -145,288 +198,526 @@ const Profile = () => {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
   };
 
-  if (loading) {
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
         <LoadingSpinner size="lg" />
+          <p className="text-gray-600 dark:text-gray-300 mt-4">Loading your profile...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="px-4 py-6 sm:px-0">
-          <h1 className="text-3xl font-bold text-gray-900">Profile Settings</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            Manage your account information and security settings
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="max-w-7xl mx-auto p-6 space-y-8">
+        {/* Header Section */}
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center space-x-6">
+              {/* Profile Avatar */}
+              <div className="relative">
+                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl flex items-center justify-center text-white text-2xl font-bold shadow-xl border-4 border-white">
+                  {getInitials(user?.name)}
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full border-4 border-white flex items-center justify-center shadow-lg">
+                  <FiCheckCircle className="w-4 h-4 text-white" />
+                </div>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 px-4 sm:px-0">
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{user?.name || 'Employee'}</h1>
+                <p className="text-gray-600 dark:text-gray-300 text-lg mt-1">{user?.department || 'Department'}</p>
+                <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  <span className="flex items-center">
+                    <FiHash className="w-4 h-4 mr-1" />
+                    ID: {user?.employeeId || 'N/A'}
+                  </span>
+                  <span className="flex items-center">
+                    <FiMail className="w-4 h-4 mr-1" />
+                    {user?.email || 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Status Badge */}
+            <div className="mt-6 lg:mt-0">
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-2xl shadow-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  <span className="font-semibold">Active Account</span>
+                </div>
+              </div>
             </div>
           </div>
-        )}
+        </div>
 
-        <div className="px-4 sm:px-0">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            {/* Tab Navigation */}
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8 px-6">
-                <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'profile'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Profile Information
-                </button>
-                <button
-                  onClick={() => setActiveTab('password')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'password'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Change Password
-                </button>
-              </nav>
+        {/* Tab Navigation */}
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 p-2">
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex-1 lg:flex-none px-6 py-3 rounded-2xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                activeTab === 'profile'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <FiUser className="w-4 h-4" />
+              <span>Profile Information</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`flex-1 lg:flex-none px-6 py-3 rounded-2xl font-medium transition-all duration-200 flex items-center justify-center space-x-2 ${
+                activeTab === 'security'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              <FiShield className="w-4 h-4" />
+              <span>Security Settings</span>
+            </button>
+          </div>
+              </div>
+
+        {/* Content Sections */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Main Content */}
+          <div className="space-y-6">
+            {/* Profile Information Tab */}
+            {activeTab === 'profile' && (
+              <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 overflow-hidden min-h-[600px] flex flex-col">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-white bg-opacity-20 rounded-2xl flex items-center justify-center shadow-lg">
+                      <FiEdit3 className="w-5 h-5 text-white" />
+                    </div>
+                  <div>
+                      <h2 className="text-xl font-bold text-white">Profile Information</h2>
+                      <p className="text-blue-100 text-sm">Update your personal details</p>
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleProfileSubmit(onProfileSubmit)} className="p-8 space-y-6 flex-1 flex flex-col">
+                  {profileLoading && (
+                    <div className="min-h-[200px] bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 flex items-center justify-center">
+                      <div className="text-center">
+                        <LoadingSpinner size="lg" />
+                        <p className="text-gray-600 dark:text-gray-300 mt-4">Loading your profile...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
+                    <div className="space-y-2">
+                      <label htmlFor="name" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiUser className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      {...registerProfile('name', {
+                        required: 'Name is required'
+                      })}
+                        className={`w-full px-4 py-3 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                          profileErrors.name 
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                            : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
+                      }`}
+                        placeholder="Enter your full name"
+                    />
+                    {profileErrors.name && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {profileErrors.name.message}
+                        </p>
+                    )}
+                  </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="department" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiMapPin className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                      Department
+                    </label>
+                    <input
+                      type="text"
+                      id="department"
+                      {...registerProfile('department', {
+                        required: 'Department is required'
+                      })}
+                        className={`w-full px-4 py-3 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                          profileErrors.department 
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                            : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
+                      }`}
+                        placeholder="Enter your department"
+                    />
+                    {profileErrors.department && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {profileErrors.department.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="mobileNumber" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiPhone className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                        Mobile Number
+                      </label>
+                      <input
+                        type="text"
+                        id="mobileNumber"
+                        {...registerProfile('mobileNumber', {
+                          required: 'Mobile number is required'
+                        })}
+                        className={`w-full px-4 py-3 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                          profileErrors.mobileNumber 
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                            : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
+                        }`}
+                        placeholder="Enter your mobile number"
+                      />
+                      {profileErrors.mobileNumber && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {profileErrors.mobileNumber.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="addressLine" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiMapPin className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                        Address Line
+                      </label>
+                      <input
+                        type="text"
+                        id="addressLine"
+                        {...registerProfile('addressLine', {
+                          required: 'Address line is required'
+                        })}
+                        className={`w-full px-4 py-3 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                          profileErrors.addressLine 
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                            : 'border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500'
+                        }`}
+                        placeholder="Enter your address line"
+                      />
+                      {profileErrors.addressLine && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {profileErrors.addressLine.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="bloodGroup" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiDroplet className="w-4 h-4 mr-2 text-blue-600 dark:text-blue-400" />
+                        Blood Group
+                      </label>
+                      <GlassDropdown
+                        name="bloodGroup"
+                        value={watchProfile('bloodGroup')}
+                        onChange={(e) => setProfileValue('bloodGroup', e.target.value)}
+                        placeholder="Select Blood Group"
+                        error={profileErrors.bloodGroup?.message}
+                        options={[
+                          { value: '', label: 'Select Blood Group' },
+                          { value: 'A+', label: 'A+' },
+                          { value: 'A-', label: 'A-' },
+                          { value: 'B+', label: 'B+' },
+                          { value: 'B-', label: 'B-' },
+                          { value: 'AB+', label: 'AB+' },
+                          { value: 'AB-', label: 'AB-' },
+                          { value: 'O+', label: 'O+' },
+                          { value: 'O-', label: 'O-' }
+                        ]}
+                      />
+                  </div>
+                </div>
+
+                  <div className="flex justify-end pt-4 mt-auto">
+                  <button
+                    type="submit"
+                      disabled={profileLoading || !profileIsDirty}
+                      className="px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-semibold hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
+                  >
+                      {profileLoading ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          <span>Updating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FiSave className="w-4 h-4" />
+                          <span>Update Profile</span>
+                        </>
+                      )}
+                  </button>
+                </div>
+              </form>
             </div>
+            )}
 
-            <div className="px-6 py-6">
-              {/* Profile Information Tab */}
-              {activeTab === 'profile' && (
-                <div>
-                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-6">
-                    Profile Information
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">
-                        Account Details
-                      </h4>
-                      <dl className="space-y-3">
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Employee ID:</dt>
-                          <dd className="text-sm text-gray-900">{user?.employeeId}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Email:</dt>
-                          <dd className="text-sm text-gray-900">{user?.email}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Role:</dt>
-                          <dd className="text-sm text-gray-900 capitalize">{user?.role}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Status:</dt>
-                          <dd className="text-sm">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              user?.status === 'active' 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {user?.status === 'active' ? 'Active' : 'Inactive'}
-                            </span>
-                          </dd>
-                        </div>
-                      </dl>
+            {/* Security Settings Tab */}
+            {activeTab === 'security' && (
+              <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 overflow-hidden min-h-[600px] flex flex-col">
+                <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-8 py-6">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-white bg-opacity-20 rounded-2xl flex items-center justify-center shadow-lg">
+                      <FiKey className="w-5 h-5 text-white" />
                     </div>
-
                     <div>
-                      <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">
-                        Account Activity
-                      </h4>
-                      <dl className="space-y-3">
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Member Since:</dt>
-                          <dd className="text-sm text-gray-900">{formatDate(user?.createdAt)}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Last Login:</dt>
-                          <dd className="text-sm text-gray-900">{formatDate(user?.lastLogin)}</dd>
-                        </div>
-                        <div className="flex justify-between">
-                          <dt className="text-sm font-medium text-gray-600">Last Updated:</dt>
-                          <dd className="text-sm text-gray-900">{formatDate(user?.updatedAt)}</dd>
-                        </div>
-                      </dl>
+                      <h2 className="text-xl font-bold text-white">Security Settings</h2>
+                      <p className="text-green-100 text-sm">Update your password and security preferences</p>
                     </div>
                   </div>
+              </div>
 
-                  <form onSubmit={handleProfileSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                          Full Name
-                        </label>
-                        <input
-                          type="text"
-                          id="name"
-                          name="name"
-                          value={profileData.name}
-                          onChange={handleProfileChange}
-                          className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                            profileErrors.name ? 'border-red-300' : 'border-gray-300'
-                          }`}
+                <form onSubmit={handlePasswordSubmit(onPasswordSubmit)} className="p-8 space-y-6 flex-1 flex flex-col">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label htmlFor="currentPassword" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiLock className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                      Current Password
+                    </label>
+                      <div className="relative">
+                    <input
+                          type={showCurrentPassword ? "text" : "password"}
+                      id="currentPassword"
+                      {...registerPassword('currentPassword', {
+                        required: 'Current password is required'
+                      })}
+                          className={`w-full px-4 py-3 pr-12 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                            passwordErrors.currentPassword 
+                              ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                              : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500'
+                      }`}
+                          placeholder="Enter current password"
                         />
-                        {profileErrors.name && (
-                          <p className="mt-1 text-sm text-red-600">{profileErrors.name}</p>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          {showCurrentPassword ? <FiEyeOff className="w-5 h-5" /> : <FiEye className="w-5 h-5" />}
+                        </button>
                       </div>
-
-                      <div>
-                        <label htmlFor="department" className="block text-sm font-medium text-gray-700">
-                          Department
-                        </label>
-                        <input
-                          type="text"
-                          id="department"
-                          name="department"
-                          value={profileData.department}
-                          onChange={handleProfileChange}
-                          className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                            profileErrors.department ? 'border-red-300' : 'border-gray-300'
-                          }`}
-                        />
-                        {profileErrors.department && (
-                          <p className="mt-1 text-sm text-red-600">{profileErrors.department}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={profileLoading}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                      >
-                        {profileLoading ? (
-                          <LoadingSpinner size="sm" className="text-white" />
-                        ) : (
-                          'Update Profile'
-                        )}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-
-              {/* Change Password Tab */}
-              {activeTab === 'password' && (
-                <div>
-                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-6">
-                    Change Password
-                  </h3>
-                  
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-6">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="text-sm font-medium text-yellow-800">
-                          Security Notice
-                        </h3>
-                        <div className="mt-2 text-sm text-yellow-700">
-                          <p>
-                            Choose a strong password that includes uppercase and lowercase letters, numbers, and special characters.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    {passwordErrors.currentPassword && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {passwordErrors.currentPassword.message}
+                        </p>
+                    )}
                   </div>
 
-                  <form onSubmit={handlePasswordSubmit} className="space-y-6">
-                    <div>
-                      <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
-                        Current Password
-                      </label>
-                      <input
-                        type="password"
-                        id="currentPassword"
-                        name="currentPassword"
-                        value={passwordData.currentPassword}
-                        onChange={handlePasswordChange}
-                        className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                          passwordErrors.currentPassword ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                      {passwordErrors.currentPassword && (
-                        <p className="mt-1 text-sm text-red-600">{passwordErrors.currentPassword}</p>
-                      )}
-                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="newPassword" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                        <FiKey className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                      New Password
+                    </label>
+                      <div className="relative">
+                    <input
+                          type={showNewPassword ? "text" : "password"}
+                      id="newPassword"
+                      {...registerPassword('newPassword', {
+                        required: 'New password is required',
+                        minLength: {
+                          value: 8,
+                          message: 'Password must be at least 8 characters'
+                        },
+                        pattern: {
+                          value: /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+                          message: 'Password must contain uppercase, lowercase, and number'
+                        }
+                      })}
+                          className={`w-full px-4 py-3 pr-12 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                            passwordErrors.newPassword 
+                              ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                              : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500'
+                      }`}
+                          placeholder="Enter new password"
+                    />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          {showNewPassword ? <FiEyeOff className="w-5 h-5" /> : <FiEye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                    {passwordErrors.newPassword && (
+                        <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                          <FiAlertCircle className="w-4 h-4 mr-1" />
+                          {passwordErrors.newPassword.message}
+                        </p>
+                    )}
+                  </div>
+                </div>
 
-                    <div>
-                      <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">
-                        New Password
-                      </label>
-                      <input
-                        type="password"
-                        id="newPassword"
-                        name="newPassword"
-                        value={passwordData.newPassword}
-                        onChange={handlePasswordChange}
-                        className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                          passwordErrors.newPassword ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                      {passwordErrors.newPassword && (
-                        <p className="mt-1 text-sm text-red-600">{passwordErrors.newPassword}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                        Confirm New Password
-                      </label>
-                      <input
-                        type="password"
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        value={passwordData.confirmPassword}
-                        onChange={handlePasswordChange}
-                        className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-                          passwordErrors.confirmPassword ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      />
-                      {passwordErrors.confirmPassword && (
-                        <p className="mt-1 text-sm text-red-600">{passwordErrors.confirmPassword}</p>
-                      )}
-                    </div>
-
-                    <div className="flex justify-end">
+                  <div className="space-y-2">
+                    <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center">
+                      <FiShield className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                    Confirm New Password
+                  </label>
+                    <div className="relative">
+                  <input
+                        type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    {...registerPassword('confirmPassword', {
+                      required: 'Please confirm your password',
+                      validate: (value) => value === watchNewPassword || 'Passwords do not match'
+                    })}
+                        className={`w-full px-4 py-3 pr-12 border-2 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 bg-white dark:bg-gray-700 dark:text-white ${
+                          passwordErrors.confirmPassword 
+                            ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-600' 
+                            : 'border-gray-200 dark:border-gray-600 hover:border-green-300 dark:hover:border-green-500'
+                    }`}
+                        placeholder="Confirm new password"
+                  />
                       <button
-                        type="submit"
-                        disabled={passwordLoading}
-                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                       >
-                        {passwordLoading ? (
-                          <LoadingSpinner size="sm" className="text-white" />
-                        ) : (
-                          'Change Password'
-                        )}
+                        {showConfirmPassword ? <FiEyeOff className="w-5 h-5" /> : <FiEye className="w-5 h-5" />}
                       </button>
                     </div>
-                  </form>
+                  {passwordErrors.confirmPassword && (
+                      <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
+                        <FiAlertCircle className="w-4 h-4 mr-1" />
+                        {passwordErrors.confirmPassword.message}
+                      </p>
+                  )}
                 </div>
-              )}
+
+                  {/* Password Requirements */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-600 rounded-2xl p-6">
+                    <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
+                      <FiShield className="w-4 h-4 mr-2" />
+                      Password Requirements:
+                    </h4>
+                    <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
+                      <li className="flex items-center">
+                        <FiCheckCircle className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                        At least 8 characters long
+                      </li>
+                      <li className="flex items-center">
+                        <FiCheckCircle className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                        Contains uppercase and lowercase letters
+                      </li>
+                      <li className="flex items-center">
+                        <FiCheckCircle className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+                        Contains at least one number
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="flex justify-end pt-4 mt-auto">
+                  <button
+                    type="submit"
+                      disabled={passwordLoading || !passwordIsDirty}
+                      className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl font-semibold hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 shadow-lg hover:shadow-xl"
+                  >
+                      {passwordLoading ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          <span>Changing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FiSave className="w-4 h-4" />
+                          <span>Change Password</span>
+                        </>
+                      )}
+                  </button>
+                </div>
+              </form>
+            </div>
+            )}
+          </div>
+
+          {/* Account Information Sidebar */}
+          <div className="space-y-6">
+            {/* Account Details Card */}
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl dark:shadow-gray-900/50 border border-gray-100 dark:border-gray-700 overflow-hidden min-h-[600px] flex flex-col">
+              <div className="bg-gradient-to-r from-purple-600 to-pink-700 px-8 py-6">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-white bg-opacity-20 rounded-2xl flex items-center justify-center shadow-lg">
+                    <FiSettings className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Account Details</h3>
+                    <p className="text-purple-100 text-sm">Your account information and status</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4 flex-1 flex flex-col ">
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl border border-blue-100 dark:border-blue-600">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center shadow-sm">
+                      <FiHash className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Employee ID</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{user?.employeeId || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl border border-green-100 dark:border-green-600">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center shadow-sm">
+                      <FiMail className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Email Address</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{user?.email || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-100 dark:border-purple-600">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-2xl flex items-center justify-center shadow-sm">
+                      <FiUser className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Role</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{user?.role || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl border border-green-100 dark:border-green-600">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center shadow-sm">
+                      <FiCheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    </div>
+                <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Status</p>
+                      <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-600">
+                        Active
+                  </span>
+                </div>
+                </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,27 +1,25 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const crypto = require('crypto');
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const crypto = require("crypto");
+const emailService = require("../services/emailService");
+const { sendSuccessResponse, sendErrorResponse } = require("../utils/responseHelpers");
 
 // Generate JWT Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    expiresIn: process.env.JWT_EXPIRES_IN || "24h",
   });
 };
 
 // Create and send token response
 const createSendToken = (user, statusCode, res) => {
   const token = generateToken(user._id);
-
-  // Remove password from output
   user.password = undefined;
 
   res.status(statusCode).json({
-    status: 'success',
+    status: "success",
     token,
-    data: {
-      user,
-    },
+    data: { user },
   });
 };
 
@@ -32,24 +30,18 @@ const register = async (req, res) => {
   try {
     const { name, email, password, employeeId, department, role } = req.body;
 
-    console.log('Registration attempt for email:', email);
-    console.log('Registration data:', { name, email, employeeId, department, role });
-
     // Check if user already exists
     const existingUser = await User.findOne({
       $or: [{ email }, { employeeId }],
     });
 
     if (existingUser) {
-      console.log('User already exists with email or employeeId');
-      return res.status(400).json({
-        error: 'User with this email or employee ID already exists',
-      });
+      return sendErrorResponse(res, "User with this email or employee ID already exists", 400);
     }
 
     // Validate role
-    const validRoles = ['employee', 'admin'];
-    const userRole = role && validRoles.includes(role) ? role : 'employee';
+    const validRoles = ["employee", "admin"];
+    const userRole = role && validRoles.includes(role) ? role : "employee";
 
     // Create new user
     const user = await User.create({
@@ -61,29 +53,11 @@ const register = async (req, res) => {
       role: userRole,
     });
 
-    console.log('User created successfully:', {
-      id: user._id,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-      passwordExists: !!user.password
-    });
-
-    // Remove password from output
     user.password = undefined;
 
-    res.status(201).json({
-      status: 'success',
-      message: 'User registered successfully',
-      data: {
-        user,
-      },
-    });
+    return sendSuccessResponse(res, { user }, "User registered successfully", 201);
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({
-      error: 'Registration failed. Please try again.',
-    });
+    return sendErrorResponse(res, "Registration failed. Please try again.");
   }
 };
 
@@ -92,48 +66,34 @@ const register = async (req, res) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    console.log('Login attempt for email:', req.body);
     const { email, password } = req.body;
-    console.log('Login attempt for password:', password);
-    // Check if email and password exist
+
     if (!email || !password) {
-      return res.status(400).json({
-        error: 'Please provide email and password',
-      });
+      return sendErrorResponse(res, "Please provide email and password", 400);
     }
 
     // Check if user exists && password is correct
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-    
-    console.log('User found:', user ? 'Yes' : 'No');
-    if (user) {
-      console.log('User email:', user.email);
-      console.log('User role:', user.role);
-      console.log('User status:', user.status);
-      console.log('Password field exists:', !!user.password);
-    }
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password"
+    );
 
     if (!user) {
-      return res.status(401).json({
-        error: 'Incorrect email or password',
-      });
+      return sendErrorResponse(res, "Incorrect email or password", 401);
     }
 
     // Check if user is active
-    if (user.status !== 'active') {
-      return res.status(401).json({
-        error: 'Your account has been deactivated. Please contact administrator.',
-      });
+    if (user.status === "inactive") {
+      return sendErrorResponse(res, "Your account has been deactivated. Please contact administrator.", 401);
     }
 
     // Check password
-    const isPasswordCorrect = await user.correctPassword(password, user.password);
-    console.log('Password comparison result:', isPasswordCorrect);
+    const isPasswordCorrect = await user.correctPassword(
+      password,
+      user.password
+    );
 
     if (!isPasswordCorrect) {
-      return res.status(401).json({
-        error: 'Incorrect email or password',
-      });
+      return sendErrorResponse(res, "Incorrect email or password", 401);
     }
 
     // Update last login
@@ -141,10 +101,7 @@ const login = async (req, res) => {
 
     createSendToken(user, 200, res);
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      error: 'Login failed. Please try again.',
-    });
+    return sendErrorResponse(res, "Login failed. Please try again.");
   }
 };
 
@@ -153,15 +110,9 @@ const login = async (req, res) => {
 // @access  Private
 const logout = async (req, res) => {
   try {
-    res.status(200).json({
-      status: 'success',
-      message: 'Logged out successfully',
-    });
+    return sendSuccessResponse(res, null, "Logged out successfully");
   } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      error: 'Logout failed. Please try again.',
-    });
+    return sendErrorResponse(res, "Logout failed. Please try again.");
   }
 };
 
@@ -171,18 +122,9 @@ const logout = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        user,
-      },
-    });
+    return sendSuccessResponse(res, { user });
   } catch (error) {
-    console.error('Get me error:', error);
-    res.status(500).json({
-      error: 'Failed to get user information',
-    });
+    return sendErrorResponse(res, "Failed to get user information");
   }
 };
 
@@ -193,26 +135,18 @@ const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    // Get user with password
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await User.findById(req.user._id).select("+password");
 
-    // Check current password
     if (!(await user.correctPassword(currentPassword, user.password))) {
-      return res.status(401).json({
-        error: 'Current password is incorrect',
-      });
+      return sendErrorResponse(res, "Current password is incorrect", 401);
     }
 
-    // Update password
     user.password = newPassword;
     await user.save();
 
     createSendToken(user, 200, res);
   } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
-      error: 'Failed to change password. Please try again.',
-    });
+    return sendErrorResponse(res, "Failed to change password. Please try again.");
   }
 };
 
@@ -225,27 +159,31 @@ const forgotPassword = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({
-        error: 'There is no user with this email address',
-      });
+      return sendErrorResponse(res, "There is no user with this email address", 404);
     }
 
     // Generate reset token
     const resetToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
 
-    // TODO: Send email with reset token
-    // For now, just return the token (in production, send via email)
-    res.status(200).json({
-      status: 'success',
-      message: 'Password reset token sent to email',
-      resetToken: resetToken, // Remove this in production
-    });
+    // Create reset URL
+    const resetURL = `${
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    }/reset-password/${resetToken}`;
+
+    try {
+      await emailService.sendPasswordResetEmail(user, resetToken);
+
+      return sendSuccessResponse(res, null, "Password reset instructions sent to your email");
+    } catch (emailError) {
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+
+      return sendErrorResponse(res, "Failed to send password reset email. Please try again later.");
+    }
   } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({
-      error: 'Failed to send password reset email. Please try again.',
-    });
+    return sendErrorResponse(res, "Failed to process password reset request. Please try again.");
   }
 };
 
@@ -257,11 +195,7 @@ const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    // Get user based on token
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(token)
-      .digest('hex');
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const user = await User.findOne({
       passwordResetToken: hashedToken,
@@ -269,12 +203,9 @@ const resetPassword = async (req, res) => {
     });
 
     if (!user) {
-      return res.status(400).json({
-        error: 'Token is invalid or has expired',
-      });
+      return sendErrorResponse(res, "Token is invalid or has expired", 400);
     }
 
-    // Set new password
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
@@ -282,10 +213,7 @@ const resetPassword = async (req, res) => {
 
     createSendToken(user, 200, res);
   } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({
-      error: 'Failed to reset password. Please try again.',
-    });
+    return sendErrorResponse(res, "Failed to reset password. Please try again.");
   }
 };
 
@@ -294,28 +222,21 @@ const resetPassword = async (req, res) => {
 // @access  Public (only for initial setup)
 const createDefaultAdmin = async (req, res) => {
   try {
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ role: 'admin' });
+    const existingAdmin = await User.findOne({ role: "admin" });
     if (existingAdmin) {
-      return res.status(400).json({
-        error: 'Admin user already exists',
-      });
+      return sendErrorResponse(res, "Admin user already exists", 400);
     }
 
-    // Create default admin
     const admin = await User.create({
-      name: 'System Administrator',
-      email: 'admin@xcompany.com',
-      password: 'admin123',
-      employeeId: 'ADMIN001',
-      department: 'IT',
-      role: 'admin',
+      name: "System Administrator",
+      email: "admin@xcompany.com",
+      password: "admin123",
+      employeeId: "ADMIN001",
+      department: "IT",
+      role: "admin",
     });
 
-    res.status(201).json({
-      status: 'success',
-      message: 'Default admin user created successfully',
-      data: {
+    return sendSuccessResponse(res, {
         user: {
           id: admin._id,
           name: admin.name,
@@ -323,13 +244,9 @@ const createDefaultAdmin = async (req, res) => {
           employeeId: admin.employeeId,
           role: admin.role,
         },
-      },
-    });
+    }, "Default admin user created successfully", 201);
   } catch (error) {
-    console.error('Create admin error:', error);
-    res.status(500).json({
-      error: 'Failed to create admin user',
-    });
+    return sendErrorResponse(res, "Failed to create admin user");
   }
 };
 
@@ -342,4 +259,4 @@ module.exports = {
   forgotPassword,
   resetPassword,
   createDefaultAdmin,
-}; 
+};

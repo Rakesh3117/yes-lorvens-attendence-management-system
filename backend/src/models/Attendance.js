@@ -1,387 +1,360 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const attendanceSchema = new mongoose.Schema({
-  employee: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Employee reference is required'],
-    index: true,
-  },
-  date: {
-    type: Date,
-    required: [true, 'Date is required'],
-    default: Date.now,
-  },
-  // Multiple punch sessions for the day
-  punchSessions: [{
-    punchIn: {
-      time: {
-        type: Date,
-        required: [true, 'Punch in time is required'],
-      },
-      location: {
-        type: String,
-        trim: true,
-      },
-      ipAddress: {
-        type: String,
-        trim: true,
-      },
-      userAgent: {
-        type: String,
-        trim: true,
-      },
+const attendanceSchema = new mongoose.Schema(
+  {
+    employee: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Employee reference is required"],
+      index: true,
     },
-    punchOut: {
-      time: {
-        type: Date,
-      },
-      location: {
-        type: String,
-        trim: true,
-      },
-      ipAddress: {
-        type: String,
-        trim: true,
-      },
-      userAgent: {
-        type: String,
-        trim: true,
-      },
+    date: {
+      type: Date,
+      required: [true, "Date is required"],
+      default: Date.now,
     },
-    sessionHours: {
+    // Multiple punch sessions for the day
+    punchSessions: [
+      {
+        punchIn: {
+          time: {
+            type: Date,
+            required: [true, "Punch in time is required"],
+          },
+          location: {
+            type: String,
+            trim: true,
+          },
+          ipAddress: {
+            type: String,
+            trim: true,
+          },
+          userAgent: {
+            type: String,
+            trim: true,
+          },
+        },
+        punchOut: {
+          time: {
+            type: Date,
+          },
+          location: {
+            type: String,
+            trim: true,
+          },
+          ipAddress: {
+            type: String,
+            trim: true,
+          },
+          userAgent: {
+            type: String,
+            trim: true,
+          },
+        },
+        sessionHours: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+      },
+    ],
+    totalHours: {
       type: Number,
       min: 0,
       default: 0,
     },
-  }],
-  totalHours: {
-    type: Number,
-    min: 0,
-    default: 0,
-  },
-  status: {
-    type: String,
-    enum: ['present', 'absent', 'late', 'half-day', 'leave'],
-    default: 'present',
-  },
-  notes: {
-    type: String,
-    trim: true,
-    maxlength: [500, 'Notes cannot exceed 500 characters'],
-  },
-  isManualEntry: {
-    type: Boolean,
-    default: false,
-  },
-  manualEntryBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-  },
-  manualEntryReason: {
-    type: String,
-    trim: true,
-    maxlength: [200, 'Manual entry reason cannot exceed 200 characters'],
-  },
-  auditTrail: [{
-    action: {
+    status: {
       type: String,
-      enum: ['created', 'updated', 'deleted', 'manual_entry', 'punch_in', 'punch_out'],
-      required: true,
+      enum: [
+        "present",
+        "absent",
+        "late",
+        "half-day",
+        "leave",
+        "work-from-home",
+        "on-duty",
+        "sick-leave",
+        "holiday",
+        "login",
+        "logout",
+        "no-records",
+        "penalty",
+      ],
+      default: "present",
     },
-    performedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-    details: {
+    notes: {
       type: String,
       trim: true,
+      maxlength: [500, "Notes cannot exceed 500 characters"],
     },
-  }],
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true },
-});
+    isManualEntry: {
+      type: Boolean,
+      default: false,
+    },
+    manualEntryBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    manualEntryReason: {
+      type: String,
+      trim: true,
+      maxlength: [500, "Manual entry reason cannot exceed 500 characters"],
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
 
-// Compound index for employee and date (unique combination)
+// Compound index for efficient queries
 attendanceSchema.index({ employee: 1, date: 1 }, { unique: true });
 
-// Index for date range queries
-attendanceSchema.index({ date: 1 });
-attendanceSchema.index({ 'punchSessions.punchIn.time': 1 });
-attendanceSchema.index({ 'punchSessions.punchOut.time': 1 });
-attendanceSchema.index({ status: 1 });
-
-// Virtual for formatted date
-attendanceSchema.virtual('formattedDate').get(function() {
-  return this.date.toISOString().split('T')[0];
-});
-
-// Virtual for first punch in time string
-attendanceSchema.virtual('firstPunchInTime').get(function() {
-  if (this.punchSessions && this.punchSessions.length > 0) {
-    return this.punchSessions[0].punchIn.time ? this.punchSessions[0].punchIn.time.toLocaleTimeString() : null;
-  }
-  return null;
-});
-
-// Virtual for last punch out time string
-attendanceSchema.virtual('lastPunchOutTime').get(function() {
-  if (this.punchSessions && this.punchSessions.length > 0) {
-    const lastSession = this.punchSessions[this.punchSessions.length - 1];
-    return lastSession.punchOut.time ? lastSession.punchOut.time.toLocaleTimeString() : null;
-  }
-  return null;
-});
-
-// Virtual for current session status
-attendanceSchema.virtual('currentSessionStatus').get(function() {
-  if (!this.punchSessions || this.punchSessions.length === 0) {
-    return 'not_started';
-  }
-  
-  const lastSession = this.punchSessions[this.punchSessions.length - 1];
-  if (!lastSession.punchOut.time) {
-    return 'active';
-  }
-  
-  return 'completed';
-});
-
-// Virtual for total sessions count
-attendanceSchema.virtual('totalSessions').get(function() {
+// Virtual for total sessions
+attendanceSchema.virtual("totalSessions").get(function () {
   return this.punchSessions ? this.punchSessions.length : 0;
 });
 
-// Virtual for completed sessions count
-attendanceSchema.virtual('completedSessions').get(function() {
+// Virtual for completed sessions
+attendanceSchema.virtual("completedSessions").get(function () {
   if (!this.punchSessions) return 0;
-  return this.punchSessions.filter(session => session.punchOut.time).length;
+  return this.punchSessions.filter(
+    (session) => session.punchOut && session.punchOut.time
+  ).length;
 });
 
-// Virtual for total hours formatted
-attendanceSchema.virtual('formattedTotalHours').get(function() {
-  if (!this.totalHours) return '0h 0m';
-  const hours = Math.floor(this.totalHours);
-  const minutes = Math.round((this.totalHours - hours) * 60);
-  return `${hours}h ${minutes}m`;
+// Pre-save middleware to calculate total hours
+attendanceSchema.pre("save", function (next) {
+  this.calculateTotalHours();
+  next();
 });
 
-// Pre-save middleware to calculate total hours from all sessions
-attendanceSchema.pre('save', function(next) {
-  if (this.punchSessions && this.punchSessions.length > 0) {
+// Instance method to calculate total hours
+attendanceSchema.methods.calculateTotalHours = function () {
+  if (!this.punchSessions || this.punchSessions.length === 0) {
+    this.totalHours = 0;
+    return;
+  }
+
     let totalHours = 0;
-    
-    this.punchSessions.forEach(session => {
-      // Calculate session hours if both punch in and punch out exist
-      if (session.punchIn.time && session.punchOut.time) {
-        const diffMs = session.punchOut.time - session.punchIn.time;
-        session.sessionHours = diffMs / (1000 * 60 * 60); // Convert to hours
-        totalHours += session.sessionHours;
-      } else if (session.punchIn.time && !session.punchOut.time) {
-        // For active session, calculate hours until now
-        const diffMs = new Date() - session.punchIn.time;
-        session.sessionHours = diffMs / (1000 * 60 * 60);
+
+  this.punchSessions.forEach((session) => {
+    if (session.punchIn && session.punchIn.time && session.punchOut && session.punchOut.time) {
+      const punchInTime = new Date(session.punchIn.time);
+      const punchOutTime = new Date(session.punchOut.time);
+      const duration = punchOutTime - punchInTime;
+      const hours = duration / (1000 * 60 * 60);
+      session.sessionHours = parseFloat(hours.toFixed(2));
         totalHours += session.sessionHours;
       }
     });
-    
-    this.totalHours = totalHours;
-  }
-  next();
-});
 
-// Pre-save middleware to add audit trail
-attendanceSchema.pre('save', function(next) {
-  if (this.isNew) {
-    this.auditTrail.push({
-      action: 'created',
-      performedBy: this.employee, // This will be updated in the controller
-      details: 'Attendance record created',
-    });
-  } else if (this.isModified()) {
-    this.auditTrail.push({
-      action: 'updated',
-      performedBy: this.employee, // This will be updated in the controller
-      details: 'Attendance record updated',
-    });
+  this.totalHours = parseFloat(totalHours.toFixed(2));
+};
+
+// Instance method to calculate attendance status
+attendanceSchema.methods.calculateAttendanceStatus = function () {
+  try {
+    const totalHours = this.totalHours || 0;
+
+    if (totalHours < 4) {
+      return "absent";
+    } else if (totalHours >= 4 && totalHours < 8) {
+      return "half-day";
+    } else {
+      return "present";
+    }
+  } catch (error) {
+    return "absent";
   }
-  next();
-});
+};
 
 // Static method to find attendance by employee and date
-attendanceSchema.statics.findByEmployeeAndDate = function(employeeId, date) {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  return this.findOne({
-    employee: employeeId,
-    date: {
-      $gte: startOfDay,
-      $lte: endOfDay,
-    },
-  });
-};
+attendanceSchema.statics.findByEmployeeAndDate = async function (employeeId, date) {
+  try {
+    if (!employeeId || !date) {
+      throw new Error("Employee ID and date are required");
+    }
 
-// Static method to find attendance by date range
-attendanceSchema.statics.findByDateRange = function(startDate, endDate, employeeId = null) {
-  const query = {
-    date: {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate),
-    },
-  };
-  
-  if (employeeId) {
-    query.employee = employeeId;
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const attendance = await this.findOne({
+      employee: employeeId,
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay,
+      },
+    });
+
+    return attendance;
+  } catch (error) {
+    console.error('Error in findByEmployeeAndDate:', error);
+    throw error;
   }
-  
-  return this.find(query).populate('employee', 'name employeeId department');
 };
 
-// Static method to find today's attendance
-attendanceSchema.statics.findTodayAttendance = function() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  return this.find({
-    date: {
-      $gte: today,
-      $lt: tomorrow,
-    },
-  }).populate('employee', 'name employeeId department');
+// Instance method to perform punch in
+attendanceSchema.methods.performPunchIn = async function (punchInData) {
+  try {
+    if (!punchInData) {
+      throw new Error("Punch in data is required");
+    }
+
+    const newSession = {
+      punchIn: {
+        time: new Date(),
+        location: punchInData.location || "",
+        ipAddress: punchInData.ipAddress || "",
+        userAgent: punchInData.userAgent || "",
+      },
+      sessionHours: 0,
+    };
+
+    this.punchSessions.push(newSession);
+    this.calculateTotalHours();
+
+    await this.save();
+    return this;
+  } catch (error) {
+    console.error('Error in performPunchIn:', error);
+    throw error;
+  }
 };
 
-// Static method to find late arrivals
-attendanceSchema.statics.findLateArrivals = function(date, lateThreshold = 9) { // 9 AM default
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const lateTime = new Date(date);
-  lateTime.setHours(lateThreshold, 0, 0, 0);
-  
-  return this.find({
-    date: {
-      $gte: startOfDay,
-      $lte: endOfDay,
-    },
-    'punchIn.time': {
-      $gt: lateTime,
-    },
-  }).populate('employee', 'name employeeId department');
-};
+// Instance method to perform punch out
+attendanceSchema.methods.performPunchOut = async function (punchOutData) {
+  try {
+    if (!punchOutData) {
+      throw new Error("Punch out data is required");
+    }
 
-// Instance method to punch in (start new session)
-attendanceSchema.methods.performPunchIn = function(punchInData) {
-  const newSession = {
-    punchIn: {
+    const currentSession = this.getCurrentSession();
+    if (!currentSession) {
+      throw new Error("No active session to punch out from");
+    }
+
+    currentSession.punchOut = {
       time: new Date(),
-      location: punchInData.location || '',
-      ipAddress: punchInData.ipAddress || '',
-      userAgent: punchInData.userAgent || '',
-    },
-    sessionHours: 0,
-  };
-  
-  this.punchSessions.push(newSession);
-  
-  // Add audit trail
-  this.auditTrail.push({
-    action: 'punch_in',
-    performedBy: this.employee,
-    details: `Punched in at ${newSession.punchIn.time.toLocaleTimeString()}`,
-  });
-  
-  return this.save();
+      location: punchOutData.location || "",
+      ipAddress: punchOutData.ipAddress || "",
+      userAgent: punchOutData.userAgent || "",
+    };
+
+    // Calculate session hours
+    if (currentSession.punchIn && currentSession.punchIn.time) {
+      const punchInTime = new Date(currentSession.punchIn.time);
+      const punchOutTime = new Date(currentSession.punchOut.time);
+      const duration = punchOutTime - punchInTime;
+      const hours = duration / (1000 * 60 * 60);
+      currentSession.sessionHours = parseFloat(hours.toFixed(2));
+    }
+
+    this.calculateTotalHours();
+
+    await this.save();
+    return this;
+  } catch (error) {
+    console.error('Error in performPunchOut:', error);
+    throw error;
+  }
 };
 
-// Instance method to punch out (end current session)
-attendanceSchema.methods.performPunchOut = function(punchOutData) {
-  if (!this.punchSessions || this.punchSessions.length === 0) {
-    throw new Error('No active session to punch out from');
-  }
-  
-  const lastSession = this.punchSessions[this.punchSessions.length - 1];
-  
-  if (lastSession.punchOut.time) {
-    throw new Error('Current session is already punched out');
-  }
-  
-  lastSession.punchOut = {
-    time: new Date(),
-    location: punchOutData.location || '',
-    ipAddress: punchOutData.ipAddress || '',
-    userAgent: punchOutData.userAgent || '',
-  };
-  
-  // Calculate session hours
-  const diffMs = lastSession.punchOut.time - lastSession.punchIn.time;
-  lastSession.sessionHours = diffMs / (1000 * 60 * 60);
-  
-  // Add audit trail
-  this.auditTrail.push({
-    action: 'punch_out',
-    performedBy: this.employee,
-    details: `Punched out at ${lastSession.punchOut.time.toLocaleTimeString()}`,
-  });
-  
-  return this.save();
-};
-
-// Instance method to get current session
-attendanceSchema.methods.getCurrentSession = function() {
+// Instance method to get current active session
+attendanceSchema.methods.getCurrentSession = function () {
   if (!this.punchSessions || this.punchSessions.length === 0) {
     return null;
   }
-  
+
   const lastSession = this.punchSessions[this.punchSessions.length - 1];
-  return lastSession.punchOut.time ? null : lastSession;
-};
+  const hasPunchOut = lastSession.punchOut && lastSession.punchOut.time;
 
-// Instance method to add manual entry
-attendanceSchema.methods.addManualEntry = function(entryData) {
-  this.isManualEntry = true;
-  this.manualEntryBy = entryData.performedBy;
-  this.manualEntryReason = entryData.reason || '';
-  
-  // Create manual session
-  const manualSession = {
-    punchIn: {
-      time: new Date(entryData.punchIn),
-      location: 'Manual Entry',
-      ipAddress: entryData.ipAddress || '',
-      userAgent: entryData.userAgent || '',
-    },
-    sessionHours: 0,
-  };
-  
-  if (entryData.punchOut) {
-    manualSession.punchOut = {
-      time: new Date(entryData.punchOut),
-      location: 'Manual Entry',
-      ipAddress: entryData.ipAddress || '',
-      userAgent: entryData.userAgent || '',
-    };
+  if (hasPunchOut) {
+    return null; // Session is completed
   }
-  
-  this.punchSessions.push(manualSession);
-  
-  return this.save();
+
+  return lastSession; // Session is active
 };
 
-module.exports = mongoose.model('Attendance', attendanceSchema); 
+// Instance method to update last session
+attendanceSchema.methods.updateLastSession = async function (updateData) {
+  try {
+    if (!this.punchSessions || this.punchSessions.length === 0) {
+      throw new Error("No sessions to update");
+    }
+
+    const lastSession = this.punchSessions[this.punchSessions.length - 1];
+
+    if (updateData.punchOut) {
+      lastSession.punchOut = {
+        time: new Date(),
+        location: updateData.punchOut.location || "",
+        ipAddress: updateData.punchOut.ipAddress || "",
+        userAgent: updateData.punchOut.userAgent || "",
+    };
+
+      // Calculate session hours
+      if (lastSession.punchIn && lastSession.punchIn.time) {
+        const punchInTime = new Date(lastSession.punchIn.time);
+        const punchOutTime = new Date(lastSession.punchOut.time);
+        const duration = punchOutTime - punchInTime;
+        const hours = duration / (1000 * 60 * 60);
+        lastSession.sessionHours = parseFloat(hours.toFixed(2));
+      }
+  }
+
+    this.calculateTotalHours();
+
+    await this.save();
+    return this;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Static method to get attendance statistics
+attendanceSchema.statics.getAttendanceStats = async function (employeeId, startDate, endDate) {
+  try {
+    const attendanceRecords = await this.find({
+      employee: employeeId,
+      date: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    });
+
+    const stats = {
+      totalDays: attendanceRecords.length,
+      present: 0,
+      absent: 0,
+      "half-day": 0,
+      totalHours: 0,
+    };
+
+    attendanceRecords.forEach((record) => {
+      stats.totalHours += record.totalHours || 0;
+
+      switch (record.status) {
+        case "present":
+          stats.present++;
+          break;
+        case "absent":
+          stats.absent++;
+          break;
+        case "half-day":
+          stats["half-day"]++;
+          break;
+  }
+    });
+
+    return stats;
+  } catch (error) {
+    throw error;
+  }
+};
+
+const Attendance = mongoose.model("Attendance", attendanceSchema);
+
+module.exports = Attendance;

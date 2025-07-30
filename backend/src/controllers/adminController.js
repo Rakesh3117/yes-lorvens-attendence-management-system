@@ -1,6 +1,32 @@
-const User = require('../models/User');
-const Attendance = require('../models/Attendance');
-const moment = require('moment');
+const User = require("../models/User");
+const Attendance = require("../models/Attendance");
+const moment = require("moment");
+const emailService = require("../services/emailService");
+const AutoPunchOutService = require("../services/autoPunchOutService");
+const { createISTDateRangeQuery, convertToIST } = require("../utils/helpers");
+const { sendSuccessResponse, sendErrorResponse, calculatePagination, buildQuery } = require("../utils/responseHelpers");
+
+// Helper function to generate next employee ID
+const generateNextEmployeeId = async () => {
+  try {
+    // Find the employee with the highest employeeId number
+    const lastEmployee = await User.findOne({
+      employeeId: { $regex: /^E-\d+$/ },
+    }).sort({ employeeId: -1 });
+
+    let nextNumber = 123; // Start from 123
+
+    if (lastEmployee) {
+      // Extract the number from the last employee ID (e.g., "E-125" -> 125)
+      const lastNumber = parseInt(lastEmployee.employeeId.split("-")[1]);
+      nextNumber = lastNumber + 1;
+    }
+
+    return `E-${nextNumber}`;
+  } catch (error) {
+    throw new Error("Failed to generate employee ID");
+  }
+};
 
 // @desc    Get all employees
 // @route   GET /api/admin/employees
@@ -8,56 +34,132 @@ const moment = require('moment');
 const getAllEmployees = async (req, res) => {
   try {
     const { search, department, status, page = 1, limit = 20 } = req.query;
-    
+
     let query = {};
-    
-    // By default, only show active employees unless a specific status is requested
+
+    // Always filter to show only employees (exclude admins)
+    query.role = "employee";
+
+    // By default, show only active and pending employees (exclude inactive)
     if (status) {
       query.status = status;
     } else {
-      query.status = 'active';
+      // Default filter: exclude inactive employees
+      query.status = { $ne: "inactive" };
     }
-    
+
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { employeeId: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { employeeId: { $regex: search, $options: "i" } },
       ];
     }
-    
+
     if (department) {
       query.department = department;
     }
 
     const skip = (page - 1) * limit;
-    
+
     const employees = await User.find(query)
-      .select('-password')
+      .select("-password")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
     const total = await User.countDocuments(query);
 
-    res.status(200).json({
-      status: 'success',
-      data: {
+    const pagination = calculatePagination(page, limit, total);
+
+    return sendSuccessResponse(res, {
         employees,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
-          totalRecords: total,
-          hasNextPage: page * limit < total,
-          hasPrevPage: page > 1,
-        },
-      },
+      pagination,
     });
   } catch (error) {
-    console.error('Get all employees error:', error);
-    res.status(500).json({
-      error: 'Failed to get employees',
+    return sendErrorResponse(res, "Failed to get employees");
+  }
+};
+
+// @desc    Get next employee ID
+// @route   GET /api/admin/employees/next-id
+// @access  Private (Admin)
+const getNextEmployeeId = async (req, res) => {
+  try {
+    const nextEmployeeId = await generateNextEmployeeId();
+
+    return sendSuccessResponse(res, {
+        nextEmployeeId,
     });
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to get next employee ID");
+  }
+};
+
+// @desc    Get employee details
+// @route   GET /api/admin/employees/:id/details
+// @access  Private (Admin)
+const getEmployeeDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const employee = await User.findById(id).select("-password");
+    if (!employee) {
+      return sendErrorResponse(res, "Employee not found");
+    }
+
+    // Get attendance records for the employee
+    let attendanceQuery = { employee: employee._id };
+
+    if (startDate && endDate) {
+      Object.assign(
+        attendanceQuery,
+        createISTDateRangeQuery(startDate, endDate)
+      );
+    }
+
+    const attendance = await Attendance.find(attendanceQuery)
+      .sort({ date: -1 })
+      .limit(30);
+
+    // Calculate statistics
+    const totalDays = attendance.length;
+    const presentDays = attendance.filter(
+      (record) => record.status === "present"
+    ).length;
+    const absentDays = attendance.filter(
+      (record) => record.status === "absent"
+    ).length;
+    const lateDays = attendance.filter(
+      (record) => record.status === "late"
+    ).length;
+    const totalHours = attendance.reduce(
+      (sum, record) => sum + (record.totalHours || 0),
+      0
+    );
+
+    const employeeData = {
+      ...employee.toObject(),
+      attendance: {
+        records: attendance,
+        statistics: {
+          totalDays,
+          presentDays,
+          absentDays,
+          lateDays,
+          totalHours: parseFloat(totalHours.toFixed(2)),
+          attendancePercentage:
+            totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0,
+        },
+      },
+    };
+
+    return sendSuccessResponse(res, {
+        employee: employeeData,
+    });
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to get employee details");
   }
 };
 
@@ -66,49 +168,88 @@ const getAllEmployees = async (req, res) => {
 // @access  Private (Admin)
 const createEmployee = async (req, res) => {
   try {
-    const { name, email, password, employeeId, department, role = 'employee' } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { employeeId }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        error: 'User with this email or employee ID already exists',
-      });
-    }
-
-    // Create new employee
-    const employee = await User.create({
+    const {
       name,
       email,
-      password,
       employeeId,
       department,
-      role,
+      position,
+      phone,
+      address,
+      joiningDate,
+      salary,
+    } = req.body;
+
+    // Generate employee ID if not provided
+    const finalEmployeeId = employeeId || (await generateNextEmployeeId());
+
+    // Check if employee already exists
+    const existingEmployee = await User.findOne({
+      $or: [{ email }, { employeeId: finalEmployeeId }],
     });
 
-    res.status(201).json({
-      status: 'success',
-      message: 'Employee created successfully',
-      data: {
+    if (existingEmployee) {
+      return sendErrorResponse(res, "Employee with this email or employee ID already exists");
+    }
+
+    const employee = new User({
+      name,
+      email,
+      employeeId: finalEmployeeId,
+      department,
+      position,
+      phone,
+      address,
+      joiningDate,
+      salary,
+      role: "employee",
+      status: "pending", // Set status to pending until account verification
+    });
+
+    await employee.save();
+
+    // Generate invitation token for the new employee
+    await employee.generateInvitationToken();
+
+    // Send invitation email with verification token
+    try {
+      const userForEmail = {
+        name,
+        email,
+        employeeId: finalEmployeeId,
+        department,
+        role: "employee",
+      };
+
+      // Get admin name from request user
+      const adminName = req.user?.name || "Administrator";
+
+      await emailService.sendEmployeeInvitation(
+        userForEmail,
+        adminName,
+        employee.invitationToken
+      );
+    } catch (emailError) {
+      console.error("Failed to send invitation email:", emailError);
+      // Don't fail the request if email fails
+    }
+
+    return sendSuccessResponse(res, {
         employee: {
-          id: employee._id,
+          _id: employee._id,
           name: employee.name,
           email: employee.email,
-          employeeId: employee.employeeId,
+          employeeId: finalEmployeeId,
           department: employee.department,
-          role: employee.role,
+          position: employee.position,
           status: employee.status,
+          isInvited: employee.isInvited,
         },
-      },
+        message:
+          "Employee created successfully. Invitation email sent with verification link.",
     });
   } catch (error) {
-    console.error('Create employee error:', error);
-    res.status(500).json({
-      error: 'Failed to create employee',
-    });
+    return sendErrorResponse(res, "Failed to create employee");
   }
 };
 
@@ -118,50 +259,28 @@ const createEmployee = async (req, res) => {
 const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, department, role, status } = req.body;
+    const updateData = req.body;
 
-    const employee = await User.findById(id);
-    if (!employee) {
-      return res.status(404).json({
-        error: 'Employee not found',
-      });
-    }
+    // Remove sensitive fields that shouldn't be updated
+    delete updateData.password;
+    delete updateData.role;
 
-    // Check if email is being changed and if it already exists
-    if (email && email !== employee.email) {
-      const existingUser = await User.findOne({ email, _id: { $ne: id } });
-      if (existingUser) {
-        return res.status(400).json({
-          error: 'Email already exists',
-        });
-      }
-    }
-
-    const updateData = {};
-    if (name) updateData.name = name;
-    if (email) updateData.email = email;
-    if (department) updateData.department = department;
-    if (role) updateData.role = role;
-    if (status) updateData.status = status;
-
-    const updatedEmployee = await User.findByIdAndUpdate(
+    const employee = await User.findByIdAndUpdate(
       id,
-      updateData,
+      { $set: updateData },
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select("-password");
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Employee updated successfully',
-      data: {
-        employee: updatedEmployee,
-      },
+    if (!employee) {
+      return sendErrorResponse(res, "Employee not found");
+    }
+
+    return sendSuccessResponse(res, {
+        employee,
+        message: "Employee updated successfully",
     });
   } catch (error) {
-    console.error('Update employee error:', error);
-    res.status(500).json({
-      error: 'Failed to update employee',
-    });
+    return sendErrorResponse(res, "Failed to update employee");
   }
 };
 
@@ -172,33 +291,19 @@ const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const employee = await User.findById(id);
+    const employee = await User.findByIdAndDelete(id);
     if (!employee) {
-      return res.status(404).json({
-        error: 'Employee not found',
-      });
+      return sendErrorResponse(res, "Employee not found");
     }
 
-    // Prevent admin from deleting themselves
-    if (employee._id.toString() === req.user._id.toString()) {
-      return res.status(400).json({
-        error: 'You cannot delete your own account',
-      });
-    }
+    // Also delete associated attendance records
+    await Attendance.deleteMany({ employee: id });
 
-    // Soft delete by setting status to inactive
-    employee.status = 'inactive';
-    await employee.save();
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Employee deactivated successfully',
+    return sendSuccessResponse(res, {
+      message: "Employee and associated records deleted successfully",
     });
   } catch (error) {
-    console.error('Delete employee error:', error);
-    res.status(500).json({
-      error: 'Failed to delete employee',
-    });
+    return sendErrorResponse(res, "Failed to delete employee");
   }
 };
 
@@ -207,41 +312,38 @@ const deleteEmployee = async (req, res) => {
 // @access  Private (Admin)
 const getAllAttendance = async (req, res) => {
   try {
-    const { 
-      employeeId, 
-      startDate, 
-      endDate, 
-      department, 
-      status, 
+    const {
+      employeeId,
+      startDate,
+      endDate,
+      department,
+      status,
       search,
-      page = 1, 
-      limit = 50 
+      page = 1,
+      limit = 50,
     } = req.query;
-    
+
     let query = {};
-    
+
     if (employeeId) {
       const employee = await User.findOne({ employeeId });
       if (employee) {
         query.employee = employee._id;
       }
     }
-    
+
     if (startDate && endDate) {
-      query.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
+      Object.assign(query, createISTDateRangeQuery(startDate, endDate));
     }
-    
+
     if (status) {
       query.status = status;
     }
 
     const skip = (page - 1) * limit;
-    
+
     let attendanceQuery = Attendance.find(query)
-      .populate('employee', 'name employeeId department')
+      .populate("employee", "name employeeId department role")
       .sort({ date: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -249,50 +351,266 @@ const getAllAttendance = async (req, res) => {
     // Filter by department if specified
     if (department) {
       attendanceQuery = attendanceQuery.populate({
-        path: 'employee',
-        match: { department: department },
+        path: "employee",
+        match: { department: department, role: "employee" },
+      });
+    } else {
+      // Always filter to show only employees (exclude admins)
+      attendanceQuery = attendanceQuery.populate({
+        path: "employee",
+        match: { role: "employee" },
       });
     }
 
     // Filter by search term if specified
     if (search) {
       attendanceQuery = attendanceQuery.populate({
-        path: 'employee',
+        path: "employee",
         match: {
+          role: "employee",
           $or: [
-            { name: { $regex: search, $options: 'i' } },
-            { employeeId: { $regex: search, $options: 'i' } },
-            { department: { $regex: search, $options: 'i' } },
+            { name: { $regex: search, $options: "i" } },
+            { employeeId: { $regex: search, $options: "i" } },
+            { department: { $regex: search, $options: "i" } },
           ],
         },
       });
     }
 
     const attendance = await attendanceQuery;
-    
+
     // Filter out records where employee is null (due to department or search filter)
-    const filteredAttendance = attendance.filter(record => record.employee);
+    const filteredAttendance = attendance.filter((record) => record.employee);
 
     const total = await Attendance.countDocuments(query);
 
-    res.status(200).json({
-      status: 'success',
-      data: {
+    const pagination = calculatePagination(page, limit, total);
+
+    return sendSuccessResponse(res, {
         attendance: filteredAttendance,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(total / limit),
-          totalRecords: total,
-          hasNextPage: page * limit < total,
-          hasPrevPage: page > 1,
-        },
-      },
+      pagination,
     });
   } catch (error) {
-    console.error('Get all attendance error:', error);
-    res.status(500).json({
-      error: 'Failed to get attendance records',
+    return sendErrorResponse(res, "Failed to get attendance records");
+  }
+};
+
+// @desc    Get today's attendance for all employees
+// @route   GET /api/admin/attendance/today
+// @access  Private (Admin)
+const getTodayAttendance = async (req, res) => {
+  try {
+    const AttendanceStatusService = require("../services/attendanceStatusService");
+    const { date } = req.query;
+    const selectedDate = date || new Date().toISOString().split("T")[0];
+
+    // Check if this is today
+    const today = moment().startOf('day');
+    const selectedDateMoment = moment(selectedDate).startOf('day');
+    const isToday = today.isSame(selectedDateMoment);
+
+    // Only update attendance status for previous days, not for today
+    let updateResults = null;
+    if (!isToday) {
+      updateResults = await AttendanceStatusService.batchUpdateAttendanceStatus(
+        new Date(selectedDate)
+      );
+    } else {
+      updateResults = { message: "Today - no status update needed" };
+    }
+
+    // Get attendance records for the selected date (same logic as dashboard)
+    const dateRange = createISTDateRangeQuery(selectedDate, selectedDate);
+    const todayAttendance = await Attendance.find({ ...dateRange })
+        .populate("employee", "name employeeId department")
+        .sort({ "employee.name": 1 });
+
+    // Get all active employees to check who hasn't punched in (same logic as dashboard)
+    const allActiveEmployees = await User.find({ 
+      role: "employee", 
+      status: "active" 
+    }).select("name employeeId department");
+
+    // Create a set of active employee IDs for quick lookup
+    const activeEmployeeIds = new Set(allActiveEmployees.map(emp => emp._id.toString()));
+
+    // Filter attendance records to only include active employees
+    const activeAttendance = todayAttendance.filter(record => 
+      activeEmployeeIds.has(record.employee._id.toString())
+    );
+
+    // Log if there were inactive employees in attendance records
+    const inactiveInAttendance = todayAttendance.filter(record => 
+      !activeEmployeeIds.has(record.employee._id.toString())
+    );
+    if (inactiveInAttendance.length > 0) {
+      console.warn(`Found ${inactiveInAttendance.length} attendance records for inactive employees:`, 
+        inactiveInAttendance.map(record => record.employee.employeeId));
+    }
+
+    // Ensure we have unique attendance records per employee
+    const uniqueAttendance = [];
+    const seenEmployeeIds = new Set();
+    
+    activeAttendance.forEach(record => {
+      const employeeId = record.employee._id.toString();
+      if (!seenEmployeeIds.has(employeeId)) {
+        seenEmployeeIds.add(employeeId);
+        uniqueAttendance.push(record);
+      }
     });
+
+    // Get all active employees to check who hasn't punched in (same logic as dashboard)
+    const employeeIdsWithAttendance = new Set(
+      uniqueAttendance.map(record => record.employee._id.toString())
+    );
+
+    // Count employees who haven't punched in yet (same logic as dashboard)
+    const employeesWithoutAttendance = allActiveEmployees.filter(
+      emp => !employeeIdsWithAttendance.has(emp._id.toString())
+    );
+
+    // Create comprehensive report - only show employees with attendance records
+    const todayReport = uniqueAttendance.map((attendanceRecord) => {
+      const employee = attendanceRecord.employee;
+      
+      // Get first punch in and last punch out from punch sessions
+      let firstPunchIn = null;
+      let lastPunchOut = null;
+      
+      if (attendanceRecord.punchSessions && attendanceRecord.punchSessions.length > 0) {
+        const firstSession = attendanceRecord.punchSessions[0];
+        const lastSession = attendanceRecord.punchSessions[attendanceRecord.punchSessions.length - 1];
+        
+        if (firstSession.punchIn && firstSession.punchIn.time) {
+          firstPunchIn = moment(firstSession.punchIn.time).format('HH:mm:ss');
+        }
+        
+        if (lastSession.punchOut && lastSession.punchOut.time) {
+          lastPunchOut = moment(lastSession.punchOut.time).format('HH:mm:ss');
+        }
+      }
+
+      // Determine status based on whether it's today or a previous day
+      let status, statusDisplay;
+      
+      if (isToday) {
+        // For today, show descriptive status based on punch times
+        if (firstPunchIn && lastPunchOut) {
+          status = "completed";
+          statusDisplay = {
+            label: "Completed",
+            color: "green",
+            bgColor: "bg-green-100",
+            textColor: "text-green-800",
+            darkBgColor: "dark:bg-green-900",
+            darkTextColor: "dark:text-green-300",
+          };
+        } else if (firstPunchIn && !lastPunchOut) {
+          status = "punched-in";
+          statusDisplay = {
+            label: "Punched In",
+            color: "blue",
+            bgColor: "bg-blue-100",
+            textColor: "text-blue-800",
+            darkBgColor: "dark:bg-blue-900",
+            darkTextColor: "dark:text-blue-300",
+          };
+        } else {
+          status = "not-started";
+          statusDisplay = {
+            label: "Not Started",
+            color: "gray",
+            bgColor: "bg-gray-100",
+            textColor: "text-gray-800",
+            darkBgColor: "dark:bg-gray-900",
+            darkTextColor: "dark:text-gray-300",
+          };
+        }
+      } else {
+        // For previous days, use the actual status from the database
+        status = attendanceRecord.status || "no-records";
+        statusDisplay = AttendanceStatusService.getStatusDisplay(status);
+      }
+
+      const employeeData = {
+        employeeId: employee.employeeId,
+        name: employee.name,
+        department: employee.department,
+        hasAttendance: true,
+        status: status,
+        statusDisplay: statusDisplay,
+        punchIn: firstPunchIn,
+        punchOut: lastPunchOut,
+        totalHours: attendanceRecord.totalHours || 0,
+        isManualEntry: attendanceRecord.isManualEntry || false,
+        notes: attendanceRecord.notes || null,
+        attendanceId: attendanceRecord._id || null,
+        isToday: isToday,
+      };
+
+      return employeeData;
+    });
+
+    // Check for duplicate employee IDs in todayReport
+    const employeeIds = todayReport.map(emp => emp.employeeId);
+    const duplicateIds = employeeIds.filter((id, index) => employeeIds.indexOf(id) !== index);
+    if (duplicateIds.length > 0) {
+      console.warn('Duplicate employee IDs found in attendance records:', duplicateIds);
+    }
+
+    // Add employees without attendance records if it's after 10 AM (same logic as dashboard)
+    const currentHour = moment().hour();
+    if (currentHour >= 10 && isToday) {
+      employeesWithoutAttendance.forEach((employee) => {
+        // Double-check that this employee doesn't already have an attendance record
+        const existingRecord = todayReport.find(record => record.employeeId === employee.employeeId);
+        if (!existingRecord) {
+          const employeeData = {
+            employeeId: employee.employeeId,
+            name: employee.name,
+            department: employee.department,
+            hasAttendance: false,
+            status: "not-started",
+            statusDisplay: {
+              label: "Not Started",
+              color: "gray",
+              bgColor: "bg-gray-100",
+              textColor: "text-gray-800",
+              darkBgColor: "dark:bg-gray-900",
+              darkTextColor: "dark:text-gray-300",
+            },
+            punchIn: null,
+            punchOut: null,
+            totalHours: 0,
+            isManualEntry: false,
+            notes: null,
+            attendanceId: null,
+            isToday: isToday,
+          };
+          todayReport.push(employeeData);
+        } else {
+          console.warn(`Employee ${employee.employeeId} already has attendance record with status: ${existingRecord.status}`);
+        }
+      });
+    }
+
+    // Group by status (same logic as dashboard)
+    const statusSummary = {};
+    todayReport.forEach((emp) => {
+      const status = emp.status;
+      statusSummary[status] = (statusSummary[status] || 0) + 1;
+    });
+
+    return sendSuccessResponse(res, {
+        date: selectedDate,
+      totalEmployees: allActiveEmployees.length,
+        statusSummary,
+        employees: todayReport,
+        updateResults: updateResults,
+    });
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to get today's attendance records");
   }
 };
 
@@ -305,56 +623,98 @@ const createManualAttendance = async (req, res) => {
 
     const employee = await User.findById(employeeId);
     if (!employee) {
-      return res.status(404).json({
-        error: 'Employee not found',
-      });
+      return sendErrorResponse(res, "Employee not found");
     }
 
     // Check if attendance already exists for this date
-    let attendance = await Attendance.findByEmployeeAndDate(employeeId, date);
-    
-    if (attendance) {
-      return res.status(400).json({
-        error: 'Attendance record already exists for this date',
-      });
-    }
-
-    // Create attendance record with manual session
-    const attendanceData = {
+    const existingAttendance = await Attendance.findOne({
       employee: employeeId,
-      date: new Date(date),
-      punchSessions: [],
-      isManualEntry: true,
-      manualEntryBy: req.user._id,
-      manualEntryReason: reason || 'Manual entry by admin',
-    };
-
-    const newAttendance = await Attendance.create(attendanceData);
-
-    // Add manual session if punch times provided
-    if (punchIn || punchOut) {
-      await newAttendance.addManualEntry({
-        performedBy: req.user._id,
-        punchIn: punchIn,
-        punchOut: punchOut,
-        reason: reason || 'Manual entry by admin',
-        ipAddress: req.ip || req.connection.remoteAddress,
-        userAgent: req.get('User-Agent'),
-      });
-    }
-
-    res.status(201).json({
-      status: 'success',
-      message: 'Manual attendance entry created successfully',
-      data: {
-        attendance: newAttendance,
+      date: {
+        $gte: new Date(date + "T00:00:00.000Z"),
+        $lte: new Date(date + "T23:59:59.999Z"),
       },
     });
-  } catch (error) {
-    console.error('Create manual attendance error:', error);
-    res.status(500).json({
-      error: 'Failed to create manual attendance entry',
+
+    if (existingAttendance) {
+      return sendErrorResponse(res, "Attendance record already exists for this date");
+    }
+
+    // Calculate total hours if both punch in and punch out are provided
+    let totalHours = 0;
+    if (punchIn && punchOut) {
+      const punchInTime = new Date(`2000-01-01T${punchIn}`);
+      const punchOutTime = new Date(`2000-01-01T${punchOut}`);
+      totalHours = (punchOutTime - punchInTime) / (1000 * 60 * 60);
+    }
+
+    // Determine status based on punch times
+    let status = "present";
+    if (!punchIn && !punchOut) {
+      status = "absent";
+    } else if (punchIn && !punchOut) {
+      status = "present";
+    } else if (totalHours < 4) {
+      status = "half-day";
+    }
+
+    // Create punch sessions array
+    const punchSessions = [];
+    if (punchIn || punchOut) {
+      const session = {
+        sessionHours: parseFloat(totalHours.toFixed(2)),
+      };
+
+      if (punchIn) {
+        session.punchIn = {
+          time: new Date(`2000-01-01T${punchIn}`),
+          location: "Manual Entry",
+          ipAddress: "",
+          userAgent: "",
+        };
+      }
+
+      if (punchOut) {
+        session.punchOut = {
+          time: new Date(`2000-01-01T${punchOut}`),
+          location: "Manual Entry",
+          ipAddress: "",
+          userAgent: "",
+        };
+      }
+
+      punchSessions.push(session);
+    }
+
+    const attendance = new Attendance({
+      employee: employeeId,
+      date: new Date(date),
+      totalHours: parseFloat(totalHours.toFixed(2)),
+      status,
+      isManualEntry: true,
+      manualEntryBy: req.user._id,
+      manualEntryReason: reason,
+      punchSessions,
     });
+
+    await attendance.save();
+
+    return sendSuccessResponse(res, {
+        attendance: {
+          _id: attendance._id,
+          employee: {
+            _id: employee._id,
+            name: employee.name,
+            employeeId: employee.employeeId,
+          },
+          date: attendance.date,
+          status: attendance.status,
+          totalHours: attendance.totalHours,
+          isManualEntry: attendance.isManualEntry,
+        },
+        message: "Manual attendance entry created successfully",
+    });
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to create manual attendance entry");
   }
 };
 
@@ -366,80 +726,118 @@ const updateAttendance = async (req, res) => {
     const { id } = req.params;
     const { punchIn, punchOut, status, notes } = req.body;
 
-    const attendance = await Attendance.findById(id).populate('employee', 'name employeeId');
+    const attendance = await Attendance.findById(id).populate(
+      "employee",
+      "name employeeId"
+    );
+
     if (!attendance) {
-      return res.status(404).json({
-        error: 'Attendance record not found',
-      });
+      return sendErrorResponse(res, "Attendance record not found");
     }
 
-    // Update the first punch session or create a new one
-    if (punchIn || punchOut) {
-      if (!attendance.punchSessions || attendance.punchSessions.length === 0) {
-        // Create a new session if none exists
-        attendance.punchSessions = [{
-          punchIn: {
-            time: punchIn ? new Date(punchIn) : null,
-            location: 'Manual Entry',
-            ipAddress: req.ip || req.connection.remoteAddress,
-            userAgent: req.get('User-Agent'),
-          },
-          punchOut: {
-            time: punchOut ? new Date(punchOut) : null,
-            location: 'Manual Entry',
-            ipAddress: req.ip || req.connection.remoteAddress,
-            userAgent: req.get('User-Agent'),
-          },
-          sessionHours: 0,
-        }];
+    // Update status and notes
+    if (status !== undefined) {
+      attendance.status = status;
+    }
+    if (notes !== undefined) {
+      attendance.notes = notes;
+    }
+
+    // Update punch sessions if punch times are provided
+    if (punchIn !== undefined || punchOut !== undefined) {
+      let totalHours = 0;
+      
+      if (punchIn && punchOut) {
+        const punchInTime = new Date(`2000-01-01T${punchIn}`);
+        const punchOutTime = new Date(`2000-01-01T${punchOut}`);
+        totalHours = (punchOutTime - punchInTime) / (1000 * 60 * 60);
+      }
+
+      // Update or create punch session
+      if (attendance.punchSessions && attendance.punchSessions.length > 0) {
+        // Update existing session
+        const session = attendance.punchSessions[0];
+        if (punchIn !== undefined) {
+          session.punchIn = {
+            time: new Date(`2000-01-01T${punchIn}`),
+            location: "Manual Entry",
+            ipAddress: "",
+            userAgent: "",
+          };
+        }
+        if (punchOut !== undefined) {
+          session.punchOut = {
+            time: new Date(`2000-01-01T${punchOut}`),
+            location: "Manual Entry",
+            ipAddress: "",
+            userAgent: "",
+          };
+        }
+        session.sessionHours = parseFloat(totalHours.toFixed(2));
       } else {
-        // Update the first session
-        const firstSession = attendance.punchSessions[0];
+        // Create new session
+        const session = {
+          sessionHours: parseFloat(totalHours.toFixed(2)),
+        };
+
         if (punchIn) {
-          firstSession.punchIn.time = new Date(punchIn);
-          firstSession.punchIn.location = 'Manual Entry';
-          firstSession.punchIn.ipAddress = req.ip || req.connection.remoteAddress;
-          firstSession.punchIn.userAgent = req.get('User-Agent');
+          session.punchIn = {
+            time: new Date(`2000-01-01T${punchIn}`),
+            location: "Manual Entry",
+            ipAddress: "",
+            userAgent: "",
+          };
         }
+
         if (punchOut) {
-          firstSession.punchOut.time = new Date(punchOut);
-          firstSession.punchOut.location = 'Manual Entry';
-          firstSession.punchOut.ipAddress = req.ip || req.connection.remoteAddress;
-          firstSession.punchOut.userAgent = req.get('User-Agent');
+          session.punchOut = {
+            time: new Date(`2000-01-01T${punchOut}`),
+            location: "Manual Entry",
+            ipAddress: "",
+            userAgent: "",
+          };
         }
+
+        attendance.punchSessions = [session];
+      }
+
+      attendance.totalHours = parseFloat(totalHours.toFixed(2));
+    }
+
+    await attendance.save();
+
+    // Get first punch in and last punch out for response
+    let firstPunchIn = null;
+    let lastPunchOut = null;
+    
+    if (attendance.punchSessions && attendance.punchSessions.length > 0) {
+      const firstSession = attendance.punchSessions[0];
+      const lastSession = attendance.punchSessions[attendance.punchSessions.length - 1];
+      
+      if (firstSession.punchIn && firstSession.punchIn.time) {
+        firstPunchIn = moment(firstSession.punchIn.time).format('HH:mm:ss');
+      }
+      
+      if (lastSession.punchOut && lastSession.punchOut.time) {
+        lastPunchOut = moment(lastSession.punchOut.time).format('HH:mm:ss');
       }
     }
 
-    // Update other fields
-    if (status) attendance.status = status;
-    if (notes !== undefined) attendance.notes = notes;
-
-    // Add audit trail entry
-    attendance.auditTrail.push({
-      action: 'updated',
-      performedBy: req.user._id,
-      timestamp: new Date(),
-      details: 'Attendance record updated by admin',
-    });
-
-    // Save the updated attendance
-    await attendance.save();
-
-    // Populate employee details for response
-    const updatedAttendance = await Attendance.findById(id).populate('employee', 'name employeeId department');
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Attendance record updated successfully',
-      data: {
-        attendance: updatedAttendance,
-      },
+    return sendSuccessResponse(res, {
+        attendance: {
+          _id: attendance._id,
+          employee: attendance.employee,
+          date: attendance.date,
+          status: attendance.status,
+          totalHours: attendance.totalHours,
+        punchIn: firstPunchIn,
+        punchOut: lastPunchOut,
+          notes: attendance.notes,
+        },
+        message: "Attendance record updated successfully",
     });
   } catch (error) {
-    console.error('Update attendance error:', error);
-    res.status(500).json({
-      error: 'Failed to update attendance record',
-    });
+    return sendErrorResponse(res, "Failed to update attendance record");
   }
 };
 
@@ -448,133 +846,943 @@ const updateAttendance = async (req, res) => {
 // @access  Private (Admin)
 const getDashboardStats = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { startDate, endDate } = req.query;
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Get total employees
+    const totalEmployees = await User.countDocuments({ role: "employee" });
+    const activeEmployees = await User.countDocuments({
+      role: "employee",
+      status: "active",
+    });
 
-    // Get total employees (all statuses)
-    const totalEmployees = await User.countDocuments({});
+    // Get today's date in IST
+    const today = new Date().toISOString().split("T")[0];
+    const todayQuery = createISTDateRangeQuery(today, today);
+
+    // Get today's attendance
+    const todayAttendance = await Attendance.find({ ...todayQuery }).populate(
+      "employee",
+      "name employeeId department"
+    );
+
+    // Get all active employees to check who hasn't punched in
+    const allActiveEmployees = await User.find({ 
+      role: "employee", 
+      status: "active" 
+    }).select("_id");
+
+    // Create a set of active employee IDs for quick lookup
+    const activeEmployeeIds = new Set(allActiveEmployees.map(emp => emp._id.toString()));
+
+    // Filter attendance records to only include active employees
+    const activeAttendance = todayAttendance.filter(record => 
+      activeEmployeeIds.has(record.employee._id.toString())
+    );
+
+    // Log if there were inactive employees in attendance records
+    const inactiveInAttendance = todayAttendance.filter(record => 
+      !activeEmployeeIds.has(record.employee._id.toString())
+    );
+    if (inactiveInAttendance.length > 0) {
+      console.warn(`Dashboard: Found ${inactiveInAttendance.length} attendance records for inactive employees:`, 
+        inactiveInAttendance.map(record => record.employee.employeeId));
+    }
+
+    // Ensure we have unique attendance records per employee
+    const uniqueAttendance = [];
+    const seenEmployeeIds = new Set();
     
-    // Get active employees only
-    const activeEmployees = await User.countDocuments({ status: 'active' });
-    
-    // Get inactive employees
-    const inactiveEmployees = await User.countDocuments({ status: 'inactive' });
+    activeAttendance.forEach(record => {
+      const employeeId = record.employee._id.toString();
+      if (!seenEmployeeIds.has(employeeId)) {
+        seenEmployeeIds.add(employeeId);
+        uniqueAttendance.push(record);
+      }
+    });
 
-    // Get today's attendance records
-    const todayAttendance = await Attendance.find({
-      date: { $gte: today, $lt: tomorrow },
-    }).populate('employee', 'name employeeId department status');
+    // Get all active employees to check who hasn't punched in
+    const employeeIdsWithAttendance = new Set(
+      uniqueAttendance.map(record => record.employee._id.toString())
+    );
 
-    // Calculate attendance statistics
-    const presentToday = todayAttendance.filter(record => 
-      record.status === 'present' && record.employee?.status === 'active'
+    // Count employees who haven't punched in yet
+    const employeesWithoutAttendance = allActiveEmployees.filter(
+      emp => !employeeIdsWithAttendance.has(emp._id.toString())
     ).length;
-    
-    const absentToday = activeEmployees - presentToday;
-    
-    const lateToday = todayAttendance.filter(record => 
-      record.status === 'late' && record.employee?.status === 'active'
-    ).length;
-    
-    const halfDayToday = todayAttendance.filter(record => 
-      record.status === 'half-day' && record.employee?.status === 'active'
-    ).length;
-    
-    const leaveToday = todayAttendance.filter(record => 
-      record.status === 'leave' && record.employee?.status === 'active'
-    ).length;
 
-    // Get late arrivals (after 9 AM) - using the existing method
-    const lateArrivals = await Attendance.findLateArrivals(today);
+    const todayStats = {
+      total: uniqueAttendance.length,
+      present: uniqueAttendance.filter((record) => record.status === "present")
+        .length,
+      absent: uniqueAttendance.filter((record) => record.status === "absent")
+        .length,
+      late: uniqueAttendance.filter((record) => record.status === "late").length,
+      "half-day": uniqueAttendance.filter(
+        (record) => record.status === "half-day"
+      ).length,
+      leave: uniqueAttendance.filter((record) => record.status === "leave")
+        .length,
+      "work-from-home": uniqueAttendance.filter(
+        (record) => record.status === "work-from-home"
+      ).length,
+      "on-duty": uniqueAttendance.filter((record) => record.status === "on-duty")
+        .length,
+      "sick-leave": uniqueAttendance.filter(
+        (record) => record.status === "sick-leave"
+      ).length,
+      holiday: uniqueAttendance.filter((record) => record.status === "holiday")
+        .length,
+      login: uniqueAttendance.filter((record) => record.status === "login")
+        .length,
+      logout: uniqueAttendance.filter((record) => record.status === "logout")
+        .length,
+      "no-records": uniqueAttendance.filter(
+        (record) => record.status === "no-records"
+      ).length,
+      penalty: uniqueAttendance.filter((record) => record.status === "penalty")
+        .length,
+    };
+
+    // Calculate attendance statistics more accurately
+    const currentHour = moment().hour();
+    const isToday = moment().startOf('day').isSame(moment(today).startOf('day'));
+    
+    // Declare variables in outer scope
+    let attendancePercentage = 0;
+    let absentPercentage = 0;
+    
+    // For today, use the same logic as getTodayAttendance
+    if (isToday) {
+      // Calculate present employees based on punch sessions (completed + punched-in)
+      let completedCount = 0;
+      let punchedInCount = 0;
+      let notStartedCount = 0;
+      
+      uniqueAttendance.forEach(record => {
+        // Check if employee has any punch sessions
+        if (record.punchSessions && record.punchSessions.length > 0) {
+          const lastSession = record.punchSessions[record.punchSessions.length - 1];
+          
+          if (lastSession.punchIn && lastSession.punchIn.time && lastSession.punchOut && lastSession.punchOut.time) {
+            // Employee has both punch-in and punch-out
+            completedCount++;
+          } else if (lastSession.punchIn && lastSession.punchIn.time && !lastSession.punchOut?.time) {
+            // Employee has only punch-in (still logged in)
+            punchedInCount++;
+          }
+        }
+      });
+      
+      // Count employees without attendance records as "not started"
+      notStartedCount = activeEmployees - uniqueAttendance.length;
+      
+      // Update todayStats with the correct counts for today
+      todayStats.completed = completedCount;
+      todayStats["punched-in"] = punchedInCount;
+      todayStats["not-started"] = notStartedCount;
+      
+      // For today, present = completed + punched-in
+      const totalPresent = completedCount + punchedInCount;
+      const totalAbsent = notStartedCount; // Only count those who haven't started
+      
+      todayStats.present = totalPresent;
+      todayStats.absent = totalAbsent;
+
+    // Calculate attendance percentage
+      attendancePercentage =
+      activeEmployees > 0
+          ? Math.round((totalPresent / activeEmployees) * 100)
+          : 0;
+
+      // Calculate absent percentage
+      absentPercentage =
+        activeEmployees > 0
+          ? Math.round((totalAbsent / activeEmployees) * 100)
+          : 0;
+    } else {
+      // For previous days, use the original logic
+      // Calculate present employees (present + late + half-day)
+      const totalPresent = todayStats.present + todayStats.late + todayStats["half-day"];
+      
+      // Calculate absent employees - respect actual attendance records
+      let absentCount;
+      if (currentHour >= 10) {
+        // After 10 AM: count employees with "absent" status + employees without attendance records
+        const absentWithRecords = uniqueAttendance.filter((record) => record.status === "absent").length;
+        const employeesWithoutAttendance = activeEmployees - uniqueAttendance.length;
+        absentCount = absentWithRecords + employeesWithoutAttendance;
+      } else {
+        // Before 10 AM: only count employees with explicit "absent" status
+        absentCount = uniqueAttendance.filter((record) => record.status === "absent").length;
+      }
+      
+      // Update todayStats with the correct absent count
+      todayStats.absent = absentCount;
+
+      // Calculate attendance percentage
+      attendancePercentage =
+        activeEmployees > 0
+          ? Math.round((totalPresent / activeEmployees) * 100)
+          : 0;
+
+      // Calculate absent percentage
+      absentPercentage =
+        activeEmployees > 0
+          ? Math.round((absentCount / activeEmployees) * 100)
+          : 0;
+    }
+
+    // Get recent attendance records
+    const recentAttendance = await Attendance.find()
+      .populate("employee", "name employeeId department")
+      .sort({ date: -1 })
+      .limit(10);
 
     // Get department-wise statistics
     const departmentStats = await User.aggregate([
-      { $match: { status: 'active' } },
+      { $match: { role: "employee" } },
       {
         $group: {
-          _id: '$department',
+          _id: "$department",
           count: { $sum: 1 },
         },
       },
       { $sort: { count: -1 } },
     ]);
 
-    // Get attendance percentage
-    const attendancePercentage = activeEmployees > 0 ? Math.round((presentToday / activeEmployees) * 100) : 0;
+    // Get attendance trends for the last 7 days
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split("T")[0];
+      last7Days.push(dateStr);
+    }
 
-    // Get this week's attendance trend (last 7 days)
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    
-    const weeklyAttendance = await Attendance.find({
-      date: { $gte: weekAgo, $lt: tomorrow },
-    }).populate('employee', 'status');
+    const weeklyStats = await Promise.all(
+      last7Days.map(async (date) => {
+        const dateQuery = createISTDateRangeQuery(date, date);
+        const dayAttendance = await Attendance.find({ ...dateQuery });
+        return {
+          date,
+          present: dayAttendance.filter((record) => record.status === "present")
+            .length,
+          absent: dayAttendance.filter((record) => record.status === "absent")
+            .length,
+          late: dayAttendance.filter((record) => record.status === "late")
+            .length,
+        };
+      })
+    );
 
-    const weeklyPresent = weeklyAttendance.filter(record => 
-      record.status === 'present' && record.employee?.status === 'active'
-    ).length;
-
-    // Get this month's attendance
-    const monthAgo = new Date(today);
-    monthAgo.setMonth(monthAgo.getMonth() - 1);
-    
-    const monthlyAttendance = await Attendance.find({
-      date: { $gte: monthAgo, $lt: tomorrow },
-    }).populate('employee', 'status');
-
-    const monthlyPresent = monthlyAttendance.filter(record => 
-      record.status === 'present' && record.employee?.status === 'active'
-    ).length;
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        // Employee counts
+    return sendSuccessResponse(res, {
         totalEmployees,
         activeEmployees,
-        inactiveEmployees,
-        
-        // Today's attendance
-        todayAttendance: presentToday,
-        absentToday,
-        lateToday,
-        halfDayToday,
-        leaveToday,
+      todayAttendance: isToday ? (todayStats.completed + todayStats["punched-in"]) : todayStats.present,
         attendancePercentage,
-        
-        // Late arrivals
-        lateArrivals: lateArrivals.length,
-        
-        // Weekly and monthly trends
-        weeklyPresent,
-        monthlyPresent,
-        
-        // Department breakdown
-        departments: departmentStats,
-        
-        // Additional stats
-        totalPresentToday: presentToday + lateToday + halfDayToday,
-        totalAbsentToday: absentToday + leaveToday,
+      absentPercentage,
+        absentToday: todayStats.absent,
+      absentWithRecords: uniqueAttendance.filter((record) => record.status === "absent").length,
+        lateToday: todayStats.late,
+        halfDayToday: todayStats["half-day"],
+        leaveToday: todayStats.leave,
+      totalPresentToday: isToday ? (todayStats.completed + todayStats["punched-in"]) : (todayStats.present + todayStats.late + todayStats["half-day"]),
+      totalAbsentToday: isToday ? todayStats["not-started"] : todayStats.absent,
+        inactiveEmployees: totalEmployees - activeEmployees,
+      // Add new status counts for today
+      completedToday: todayStats.completed || 0,
+      punchedInToday: todayStats["punched-in"] || 0,
+      notStartedToday: todayStats["not-started"] || 0,
+        recentAttendance: recentAttendance.map((record) => ({
+          _id: record._id,
+          employee: record.employee,
+          date: record.date,
+          status: record.status,
+          totalHours: record.totalHours,
+        })),
+        departmentStats,
+        weeklyStats,
+    });
+  } catch (error) {
+    console.error('Dashboard API Error:', error);
+    return sendErrorResponse(res, "Failed to get dashboard statistics");
+  }
+};
+
+// @desc    Generate reports
+// @route   GET /api/admin/reports
+// @access  Private (Admin)
+const getReports = async (req, res) => {
+  try {
+    const {
+      reportType = "attendance",
+      startDate,
+      endDate,
+      department,
+      employeeId,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    let query = {};
+
+    // Date range filter
+    if (startDate && endDate) {
+      Object.assign(query, createISTDateRangeQuery(startDate, endDate));
+    }
+
+    // Department filter
+    if (department) {
+      query["employee.department"] = department;
+    }
+
+    // Employee filter
+    if (employeeId) {
+      const employee = await User.findOne({ employeeId });
+      if (employee) {
+        query.employee = employee._id;
+      }
+    }
+
+    // Build aggregation pipeline based on report type
+    let pipeline = [
+      {
+        $lookup: {
+          from: "users",
+          localField: "employee",
+          foreignField: "_id",
+          as: "employee",
+        },
+      },
+      {
+        $unwind: "$employee",
+      },
+      // Filter to show only employees (exclude admins)
+      {
+        $match: {
+          "employee.role": "employee",
+        },
+      },
+    ];
+
+    // Add date filter
+    if (startDate && endDate) {
+      pipeline.push({
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate),
+          },
+        },
+      });
+    }
+
+    // Add department filter
+    if (department) {
+      pipeline.push({
+        $match: {
+          "employee.department": department,
+        },
+      });
+    }
+
+    // Add employee filter
+    if (employeeId) {
+      const employee = await User.findOne({ employeeId });
+      if (employee) {
+        pipeline.push({
+          $match: {
+            employee: employee._id,
+          },
+        });
+      }
+    }
+
+    // Add report-specific aggregations
+    switch (reportType) {
+      case "attendance":
+        pipeline.push(
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+              },
+              status: { $first: "$status" },
+              totalHours: { $first: "$totalHours" },
+              punchSessions: { $first: "$punchSessions" },
+            },
+          },
+          {
+            $addFields: {
+              punchIn: {
+                $cond: {
+                  if: { $gt: [{ $size: "$punchSessions" }, 0] },
+                  then: { $arrayElemAt: ["$punchSessions.punchIn.time", 0] },
+                  else: null
+                }
+              },
+              punchOut: {
+                $cond: {
+                  if: { $gt: [{ $size: "$punchSessions" }, 0] },
+                  then: { 
+                    $let: {
+                      vars: {
+                        lastSession: { $arrayElemAt: ["$punchSessions", -1] }
+                      },
+                      in: "$$lastSession.punchOut.time"
+                    }
+                  },
+                  else: null
+                }
+              }
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              status: 1,
+              totalHours: 1,
+              punchIn: 1,
+              punchOut: 1
+            }
+          },
+          {
+            $sort: { "_id.date": -1, "_id.name": 1 },
+          }
+        );
+        break;
+
+      case "late":
+        pipeline.push(
+          {
+            $match: { status: "late" },
+          },
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+              },
+              punchSessions: { $first: "$punchSessions" },
+              totalHours: { $first: "$totalHours" },
+            },
+          },
+          {
+            $addFields: {
+              punchIn: {
+                $cond: {
+                  if: { $gt: [{ $size: "$punchSessions" }, 0] },
+                  then: { $arrayElemAt: ["$punchSessions.punchIn.time", 0] },
+                  else: null
+                }
+              }
+            }
+          },
+          {
+            $project: {
+              _id: 1,
+              punchIn: 1,
+              totalHours: 1
+            }
+          },
+          {
+            $sort: { "_id.date": -1, "_id.name": 1 },
+          }
+        );
+        break;
+
+      case "absent":
+        pipeline.push(
+          {
+            $match: { status: "absent" },
+          },
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+              },
+            },
+          },
+          {
+            $sort: { "_id.date": -1, "_id.name": 1 },
+          }
+        );
+        break;
+
+      case "summary":
+        pipeline.push(
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+              },
+              totalDays: { $sum: 1 },
+              presentDays: {
+                $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] },
+              },
+              absentDays: {
+                $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] },
+              },
+              lateDays: {
+                $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] },
+              },
+              halfDayDays: {
+                $sum: { $cond: [{ $eq: ["$status", "half-day"] }, 1, 0] },
+              },
+              leaveDays: {
+                $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] },
+              },
+              workFromHomeDays: {
+                $sum: { $cond: [{ $eq: ["$status", "work-from-home"] }, 1, 0] },
+              },
+              onDutyDays: {
+                $sum: { $cond: [{ $eq: ["$status", "on-duty"] }, 1, 0] },
+              },
+              sickLeaveDays: {
+                $sum: { $cond: [{ $eq: ["$status", "sick-leave"] }, 1, 0] },
+              },
+              holidayDays: {
+                $sum: { $cond: [{ $eq: ["$status", "holiday"] }, 1, 0] },
+              },
+              loginDays: {
+                $sum: { $cond: [{ $eq: ["$status", "login"] }, 1, 0] },
+              },
+              logoutDays: {
+                $sum: { $cond: [{ $eq: ["$status", "logout"] }, 1, 0] },
+              },
+              noRecordsDays: {
+                $sum: { $cond: [{ $eq: ["$status", "no-records"] }, 1, 0] },
+              },
+              penaltyDays: {
+                $sum: { $cond: [{ $eq: ["$status", "penalty"] }, 1, 0] },
+              },
+              totalHours: { $sum: "$totalHours" },
+            },
+          },
+          {
+            $addFields: {
+              attendancePercentage: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $gt: ["$totalDays", 0] },
+                      { $divide: ["$presentDays", "$totalDays"] },
+                      0,
+                    ],
+                  },
+                  100,
+                ],
+              },
+            },
+          },
+          {
+            $sort: { "_id.name": 1 },
+          }
+        );
+        break;
+
+      default:
+        return sendErrorResponse(res, "Invalid report type");
+    }
+
+    // Add pagination
+    const skip = (page - 1) * limit;
+    pipeline.push({ $skip: skip }, { $limit: parseInt(limit) });
+
+    const results = await Attendance.aggregate(pipeline);
+
+    // Get total count for pagination
+    const countPipeline = pipeline.slice(0, -2); // Remove skip and limit
+    countPipeline.push({ $count: "total" });
+    const countResult = await Attendance.aggregate(countPipeline);
+    const total = countResult.length > 0 ? countResult[0].total : 0;
+
+    return sendSuccessResponse(res, {
+        reportType,
+        results,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalRecords: total,
+          hasNextPage: page * limit < total,
+          hasPrevPage: page > 1,
       },
     });
   } catch (error) {
-    console.error('Get dashboard stats error:', error);
-    res.status(500).json({
-      error: 'Failed to get dashboard statistics',
+    return sendErrorResponse(res, "Failed to generate report");
+  }
+};
+
+// @desc    Export reports
+// @route   GET /api/admin/reports/export
+// @access  Private (Admin)
+const exportReports = async (req, res) => {
+  try {
+    const {
+      reportType = "attendance",
+      startDate,
+      endDate,
+      department,
+      employeeId,
+      format = "csv",
+    } = req.query;
+
+    let query = {};
+
+    // Date range filter
+    if (startDate && endDate) {
+      Object.assign(query, createISTDateRangeQuery(startDate, endDate));
+    }
+
+    // Department filter
+    if (department) {
+      query["employee.department"] = department;
+    }
+
+    // Employee filter
+    if (employeeId) {
+      const employee = await User.findOne({ employeeId });
+      if (employee) {
+        query.employee = employee._id;
+      }
+    }
+
+    // Build aggregation pipeline
+    let pipeline = [
+      {
+        $lookup: {
+          from: "users",
+          localField: "employee",
+          foreignField: "_id",
+          as: "employee",
+        },
+      },
+      {
+        $unwind: "$employee",
+      },
+    ];
+
+    // Add filters
+    if (startDate && endDate) {
+      pipeline.push({
+        $match: {
+          date: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate),
+          },
+        },
+      });
+    }
+
+    if (department) {
+      pipeline.push({
+        $match: {
+          "employee.department": department,
+        },
+      });
+    }
+
+    if (employeeId) {
+      const employee = await User.findOne({ employeeId });
+      if (employee) {
+        pipeline.push({
+          $match: {
+            employee: employee._id,
+          },
+        });
+      }
+    }
+
+    // Add report-specific aggregations
+    switch (reportType) {
+      case "attendance":
+        pipeline.push(
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+                date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+              },
+              status: { $first: "$status" },
+              totalHours: { $first: "$totalHours" },
+              punchIn: { $first: "$firstPunchInTime" },
+              punchOut: { $first: "$lastPunchOutTime" },
+            },
+          },
+          {
+            $sort: { "_id.date": -1, "_id.name": 1 },
+          }
+        );
+        break;
+
+      case "summary":
+        pipeline.push(
+          {
+            $group: {
+              _id: {
+                employeeId: "$employee.employeeId",
+                name: "$employee.name",
+                department: "$employee.department",
+              },
+              totalDays: { $sum: 1 },
+              presentDays: {
+                $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] },
+              },
+              absentDays: {
+                $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] },
+              },
+              lateDays: {
+                $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] },
+              },
+              halfDayDays: {
+                $sum: { $cond: [{ $eq: ["$status", "half-day"] }, 1, 0] },
+              },
+              leaveDays: {
+                $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] },
+              },
+              workFromHomeDays: {
+                $sum: { $cond: [{ $eq: ["$status", "work-from-home"] }, 1, 0] },
+              },
+              onDutyDays: {
+                $sum: { $cond: [{ $eq: ["$status", "on-duty"] }, 1, 0] },
+              },
+              sickLeaveDays: {
+                $sum: { $cond: [{ $eq: ["$status", "sick-leave"] }, 1, 0] },
+              },
+              holidayDays: {
+                $sum: { $cond: [{ $eq: ["$status", "holiday"] }, 1, 0] },
+              },
+              loginDays: {
+                $sum: { $cond: [{ $eq: ["$status", "login"] }, 1, 0] },
+              },
+              logoutDays: {
+                $sum: { $cond: [{ $eq: ["$status", "logout"] }, 1, 0] },
+              },
+              noRecordsDays: {
+                $sum: { $cond: [{ $eq: ["$status", "no-records"] }, 1, 0] },
+              },
+              penaltyDays: {
+                $sum: { $cond: [{ $eq: ["$status", "penalty"] }, 1, 0] },
+              },
+              totalHours: { $sum: "$totalHours" },
+            },
+          },
+          {
+            $addFields: {
+              attendancePercentage: {
+                $multiply: [
+                  {
+                    $cond: [
+                      { $gt: ["$totalDays", 0] },
+                      { $divide: ["$presentDays", "$totalDays"] },
+                      0,
+                    ],
+                  },
+                  100,
+                ],
+              },
+            },
+          },
+          {
+            $sort: { "_id.name": 1 },
+          }
+        );
+        break;
+
+      default:
+        return sendErrorResponse(res, "Invalid report type");
+    }
+
+    const results = await Attendance.aggregate(pipeline);
+
+    // Format data for export
+    let exportData = [];
+    let headers = [];
+
+    if (reportType === "attendance") {
+      headers = [
+        "Employee ID",
+        "Name",
+        "Department",
+        "Date",
+        "Status",
+        "Total Hours",
+        "Punch In",
+        "Punch Out",
+      ];
+      exportData = results.map((record) => [
+        record._id.employeeId,
+        record._id.name,
+        record._id.department,
+        record._id.date,
+        record.status,
+        record.totalHours || 0,
+        record.punchIn || "",
+        record.punchOut || "",
+      ]);
+    } else if (reportType === "summary") {
+      headers = [
+        "Employee ID",
+        "Name",
+        "Department",
+        "Total Days",
+        "Present Days",
+        "Absent Days",
+        "Late Days",
+        "Half Day Days",
+        "Leave Days",
+        "Work From Home Days",
+        "On Duty Days",
+        "Sick Leave Days",
+        "Holiday Days",
+        "Login Days",
+        "Logout Days",
+        "No Records Days",
+        "Penalty Days",
+        "Total Hours",
+        "Attendance Percentage",
+      ];
+      exportData = results.map((record) => [
+        record._id.employeeId,
+        record._id.name,
+        record._id.department,
+        record.totalDays,
+        record.presentDays,
+        record.absentDays,
+        record.lateDays,
+        record.halfDayDays || 0,
+        record.leaveDays || 0,
+        record.workFromHomeDays || 0,
+        record.onDutyDays || 0,
+        record.sickLeaveDays || 0,
+        record.holidayDays || 0,
+        record.loginDays || 0,
+        record.logoutDays || 0,
+        record.noRecordsDays || 0,
+        record.penaltyDays || 0,
+        parseFloat(record.totalHours.toFixed(2)),
+        parseFloat(record.attendancePercentage.toFixed(2)) + "%",
+      ]);
+    }
+
+    // Generate CSV content
+    const csvContent = [
+      headers.join(","),
+      ...exportData.map((row) => row.join(",")),
+    ].join("\n");
+
+    // Set response headers
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${reportType}_report_${startDate}_to_${endDate}.csv"`
+    );
+
+    res.send(csvContent);
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to export report");
+  }
+};
+
+// @desc    Update attendance status for all employees on a specific date
+// @route   POST /api/admin/attendance/update-status
+// @access  Private (Admin)
+const updateAttendanceStatus = async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    if (!date) {
+      return sendErrorResponse(res, "Date is required");
+    }
+
+    const AttendanceStatusService = require("../services/attendanceStatusService");
+
+    // Update attendance status for all employees
+    const results = await AttendanceStatusService.batchUpdateAttendanceStatus(
+      new Date(date)
+    );
+
+    return sendSuccessResponse(res, {
+        date: date,
+        results: results,
+        totalProcessed: results.length,
+        successful: results.filter((r) => r.success).length,
+        failed: results.filter((r) => !r.success).length,
     });
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to update attendance status");
+  }
+};
+
+// @desc    Get currently logged in employees
+// @route   GET /api/admin/attendance/logged-in
+// @access  Private (Admin)
+const getLoggedInEmployees = async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date) : new Date();
+
+    // Get logged in employees
+    const loggedInEmployees = await AutoPunchOutService.getLoggedInEmployees(targetDate);
+
+    return sendSuccessResponse(res, {
+      date: moment(targetDate).format('YYYY-MM-DD'),
+      loggedInCount: loggedInEmployees.length,
+      employees: loggedInEmployees
+    });
+  } catch (error) {
+    console.error('Get logged in employees error:', error);
+    return sendErrorResponse(res, `Failed to get logged in employees: ${error.message}`);
+  }
+};
+
+// @desc    Check if auto punch-out should run
+// @route   GET /api/admin/attendance/auto-punchout/status
+// @access  Private (Admin)
+const getAutoPunchOutStatus = async (req, res) => {
+  try {
+    const shouldRun = AutoPunchOutService.shouldRunAutoPunchOut();
+    const now = moment();
+    
+    return sendSuccessResponse(res, {
+      shouldRun: shouldRun,
+      currentTime: now.format('HH:mm:ss'),
+      currentDate: now.format('YYYY-MM-DD'),
+      autoPunchOutTime: "18:00:00" // 6:00 PM
+    });
+  } catch (error) {
+    console.error('Get auto punch-out status error:', error);
+    return sendErrorResponse(res, `Failed to get auto punch-out status: ${error.message}`);
   }
 };
 
 module.exports = {
   getAllEmployees,
+  getNextEmployeeId,
+  getEmployeeDetails,
   createEmployee,
   updateEmployee,
   deleteEmployee,
   getAllAttendance,
+  getTodayAttendance,
   createManualAttendance,
   updateAttendance,
+  updateAttendanceStatus,
   getDashboardStats,
-}; 
+  getReports,
+  exportReports,
+  getLoggedInEmployees,
+  getAutoPunchOutStatus,
+};

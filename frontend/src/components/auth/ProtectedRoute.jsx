@@ -1,19 +1,24 @@
-import React from 'react';
-import { Navigate, useLocation, Outlet } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import React, { useEffect } from 'react';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { useSelector, useDispatch } from 'react-redux';
+import { getMe } from '../../store/slices/authSlice';
 import LoadingSpinner from '../common/LoadingSpinner';
 
-const ProtectedRoute = ({ requiredRole, children }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+const ProtectedRoute = ({ allowedRoles = [] }) => {
+  const dispatch = useDispatch();
   const location = useLocation();
+  const { user, token, isAuthenticated, isLoading } = useSelector((state) => state.auth);
 
-  console.log('ProtectedRoute - isAuthenticated:', isAuthenticated, 'isLoading:', isLoading, 'user:', user?.email, 'role:', user?.role, 'requiredRole:', requiredRole);
+  useEffect(() => {
+    if (token && !isAuthenticated && !isLoading) {
+      dispatch(getMe());
+    }
+  }, [token, isAuthenticated, isLoading, dispatch]);
 
   // Show loading spinner while checking authentication
-  if (isLoading) {
-    console.log('ProtectedRoute - showing loading spinner');
+  if (isLoading || (token && !isAuthenticated)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50">
+      <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -21,25 +26,17 @@ const ProtectedRoute = ({ requiredRole, children }) => {
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    console.log('ProtectedRoute - not authenticated, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   // Check role-based access
-  if (requiredRole && user?.role !== requiredRole) {
-    console.log('ProtectedRoute - role check failed, redirecting');
-    // Redirect based on user role
-    if (user?.role === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />;
-    } else if (user?.role === 'employee') {
-      return <Navigate to="/employee/dashboard" replace />;
-    } else {
-      return <Navigate to="/login" replace />;
-    }
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user?.role)) {
+    // Redirect to appropriate dashboard based on user role
+    const redirectPath = user?.role === 'admin' ? '/admin/dashboard' : '/employee/dashboard';
+    return <Navigate to={redirectPath} replace />;
   }
 
-  console.log('ProtectedRoute - access granted');
-  return children ? children : <Outlet />;
+  return <Outlet />;
 };
 
 export default ProtectedRoute; 

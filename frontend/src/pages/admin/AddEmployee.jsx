@@ -1,23 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiUserPlus, FiArrowLeft, FiEye, FiEyeOff } from 'react-icons/fi';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import toast from 'react-hot-toast';
+import { useForm, Controller } from 'react-hook-form';
+import { FiUserPlus, FiArrowLeft } from 'react-icons/fi';
+import { LoadingSpinner, CustomInput, CustomDropdown, ThemeToggle } from '../../components/common';
+import { useCreateEmployee } from '../../hooks/useEmployees';
+import { adminAPI } from '../../services/api/adminAPI';
 
 const AddEmployee = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    employeeId: '',
-    department: '',
-    role: 'employee',
+  const [nextEmployeeId, setNextEmployeeId] = useState('');
+  const [loadingEmployeeId, setLoadingEmployeeId] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    formState: { errors },
+    reset,
+    setValue,
+  } = useForm({
+    mode: 'onChange',
   });
 
-  const [formErrors, setFormErrors] = useState({});
+  // Watch form data for debugging
+  const formData = watch();
+  console.log('Form data:', formData);
+
+  const createEmployeeMutation = useCreateEmployee();
+
+  // Fetch next employee ID when component mounts
+  useEffect(() => {
+    const fetchNextEmployeeId = async () => {
+      setLoadingEmployeeId(true);
+      try {
+        const response = await adminAPI.getNextEmployeeId();
+        setNextEmployeeId(response.data.data.nextEmployeeId);
+        setValue('employeeId', response.data.data.nextEmployeeId);
+      } catch (error) {
+        console.error('Error fetching next employee ID:', error);
+      } finally {
+        setLoadingEmployeeId(false);
+      }
+    };
+
+    fetchNextEmployeeId();
+  }, [setValue]);
 
   // Predefined departments
   const departments = [
@@ -37,282 +65,221 @@ const AddEmployee = () => {
     { value: 'admin', label: 'Administrator' }
   ];
 
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!formData.name.trim()) errors.name = 'Name is required';
-    if (!formData.email.trim()) errors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Email is invalid';
-    
-    if (!formData.password) errors.password = 'Password is required';
-    else if (formData.password.length < 8) errors.password = 'Password must be at least 8 characters';
-    else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-      errors.password = 'Password must contain uppercase, lowercase, and number';
-    }
-    
-    if (!formData.employeeId.trim()) errors.employeeId = 'Employee ID is required';
-    else if (!/^[A-Za-z0-9\-_\.]+$/.test(formData.employeeId)) {
-      errors.employeeId = 'Employee ID can contain letters, numbers, hyphens, underscores, and dots';
-    }
-    
-    if (!formData.department.trim()) errors.department = 'Department is required';
-    if (!formData.role) errors.role = 'Role is required';
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
+  // Debug: Log form data on change
+  const logFormData = (data) => {
+    console.log('Current form data:', data);
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
-    
+  const onSubmit = async (data) => {
     try {
-      setLoading(true);
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/employees`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create employee');
-      }
-
-      toast.success('Employee created successfully!');
+      console.log('Original form data:', data);
+      console.log('Form data being submitted:', data);
+      console.log('Submit data keys:', Object.keys(data));
+      console.log('Submit data values:', Object.values(data));
+      
+      const response = await createEmployeeMutation.mutateAsync(data);
+      reset(); // Reset form after successful submission
+      
+      // Stay in admin area and navigate to employees list
       navigate('/admin/employees');
     } catch (err) {
-      toast.error(err.message || 'Failed to create employee');
       console.error('Error creating employee:', err);
-    } finally {
-      setLoading(false);
+      console.error('Error response:', err.response?.data);
+      // Error is handled by the mutation
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50">
-      <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="px-4 py-6 sm:px-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/admin/employees')}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
-              >
-                <FiArrowLeft className="w-4 h-4 mr-2" />
-                Back to Employees
-              </button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Add New Employee</h1>
-                <p className="mt-1 text-sm text-gray-600">
-                  Create a new employee account
-                </p>
-              </div>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => navigate('/admin/employees')}
+              className="flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors group"
+            >
+              <FiArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+              Back to Employees
+            </button>
+
+          </div>
+          
+          <div className="flex items-center">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-3 rounded-lg mr-4 shadow-lg">
+              <FiUserPlus className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Add New Employee</h1>
+              <p className="text-gray-600 dark:text-gray-400">Create a new employee account</p>
             </div>
           </div>
         </div>
 
         {/* Form */}
-        <div className="px-4 sm:px-0">
-          <div className="bg-white overflow-hidden shadow-lg rounded-xl border border-gray-100">
-            <div className="px-6 py-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Name */}
-                  <div>
-                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.name ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter full name"
-                    />
-                    {formErrors.name && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
-                    )}
-                  </div>
-
-                  {/* Email */}
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      id="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.email ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter email address"
-                    />
-                    {formErrors.email && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>
-                    )}
-                  </div>
-
-                  {/* Employee ID */}
-                  <div>
-                    <label htmlFor="employeeId" className="block text-sm font-medium text-gray-700 mb-2">
-                      Employee ID *
-                    </label>
-                    <input
-                      type="text"
-                      id="employeeId"
-                      name="employeeId"
-                      value={formData.employeeId}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.employeeId ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter employee ID"
-                    />
-                    {formErrors.employeeId && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.employeeId}</p>
-                    )}
-                  </div>
-
-                  {/* Department */}
-                  <div>
-                    <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-2">
-                      Department *
-                    </label>
-                    <select
-                      id="department"
-                      name="department"
-                      value={formData.department}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.department ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    >
-                      <option value="">Select Department</option>
-                      {departments.map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                    {formErrors.department && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.department}</p>
-                    )}
-                  </div>
-
-                  {/* Role */}
-                  <div>
-                    <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
-                      Role *
-                    </label>
-                    <select
-                      id="role"
-                      name="role"
-                      value={formData.role}
-                      onChange={handleChange}
-                      className={`w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                        formErrors.role ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    >
-                      <option value="">Select Role</option>
-                      {roles.map(role => (
-                        <option key={role.value} value={role.value}>{role.label}</option>
-                      ))}
-                    </select>
-                    {formErrors.role && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.role}</p>
-                    )}
-                  </div>
-
-                  {/* Password */}
-                  <div className="md:col-span-2">
-                    <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                      Password *
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        id="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        className={`w-full px-3 py-3 pr-10 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200 ${
-                          formErrors.password ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                        placeholder="Enter password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                      >
-                        {showPassword ? (
-                          <FiEyeOff className="h-5 w-5 text-gray-400" />
-                        ) : (
-                          <FiEye className="h-5 w-5 text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                    {formErrors.password && (
-                      <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-500">
-                      Password must be at least 8 characters with uppercase, lowercase, and number
-                    </p>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/admin/employees')}
-                    className="px-6 py-3 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="inline-flex items-center px-6 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    {loading ? (
-                      <LoadingSpinner size="sm" className="text-white mr-2" />
-                    ) : (
-                      <FiUserPlus className="w-4 h-4 mr-2" />
-                    )}
-                    Create Employee
-                  </button>
-                </div>
-              </form>
-            </div>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Employee Information</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Fill in the employee details below</p>
           </div>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Name */}
+              <Controller
+                name="name"
+                control={control}
+                rules={{ required: 'Name is required' }}
+                render={({ field, fieldState }) => (
+                  <CustomInput
+                    {...field}
+                    type="text"
+                    placeholder="Enter full name"
+                    label="Full Name *"
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+
+              {/* Email */}
+              <Controller
+                name="email"
+                control={control}
+                rules={{
+                  required: 'Email is required',
+                  pattern: {
+                    value: /\S+@\S+\.\S+/,
+                    message: 'Email is invalid'
+                  }
+                }}
+                render={({ field, fieldState }) => (
+                  <CustomInput
+                    {...field}
+                    type="email"
+                    placeholder="Enter email address"
+                    label="Email Address *"
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+
+              {/* Employee ID */}
+              <Controller
+                name="employeeId"
+                control={control}
+                rules={{ required: 'Employee ID is required' }}
+                render={({ field, fieldState }) => (
+                  <div className="relative">
+                    <CustomInput
+                      {...field}
+                      type="text"
+                      placeholder={loadingEmployeeId ? "Loading..." : "Auto-generated"}
+                      label="Employee ID *"
+                      error={fieldState.error?.message}
+                      disabled={true}
+                    />
+                    {loadingEmployeeId && (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        <LoadingSpinner size="sm" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              />
+
+              {/* Department */}
+              <Controller
+                name="department"
+                control={control}
+                rules={{ required: 'Department is required' }}
+                render={({ field, fieldState }) => (
+                  <CustomDropdown
+                    {...field}
+                    placeholder="Select Department"
+                    label="Department *"
+                    error={fieldState.error?.message}
+                    options={[
+                      { value: '', label: 'Select Department' },
+                      ...departments.map(dept => ({ value: dept, label: dept }))
+                    ]}
+                  />
+                )}
+              />
+
+              {/* Role */}
+              <Controller
+                name="role"
+                control={control}
+                rules={{ required: 'Role is required' }}
+                render={({ field, fieldState }) => (
+                  <CustomDropdown
+                    {...field}
+                    placeholder="Select Role"
+                    label="Role *"
+                    error={fieldState.error?.message}
+                    options={[
+                      { value: '', label: 'Select Role' },
+                      ...roles
+                    ]}
+                  />
+                )}
+              />
+
+              {/* Note about invitation system */}
+              <div className="md:col-span-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-1 rounded">
+                        <svg className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Employee Setup Information
+                      </h3>
+                      <div className="mt-2 text-sm text-blue-700 dark:text-blue-300 space-y-2">
+                        <p>
+                          <strong>Employee ID:</strong> Automatically generated in the format "E-123" starting from E-123.
+                        </p>
+                        <p>
+                          <strong>Invitation System:</strong> An invitation email will be sent to the employee's email address. 
+                          They will receive a secure link to set up their own password and complete their account setup.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => navigate('/admin/employees')}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createEmployeeMutation.isPending}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                {createEmployeeMutation.isPending ? (
+                  <div className="flex items-center">
+                    <LoadingSpinner size="sm" className="text-white mr-2" />
+                    Creating...
+                  </div>
+                ) : (
+                  'Create Employee & Send Invitation'
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
