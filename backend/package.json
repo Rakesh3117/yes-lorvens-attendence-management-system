@@ -5,7 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "create-super-admin": "node scripts/createSuperAdmin.js",
+    "cleanup-invitations": "node scripts/cleanupInvitations.js",
+    "test-invitation": "node scripts/testInvitation.js"
   },
   "keywords": [
     "attendance",

@@ -34,34 +34,22 @@ const EmployeeCalendar = () => {
 
       // Handle different response structures
       let data = [];
-      console.log('Raw API response:', response);
       
       if (response && response.data) {
-        console.log('Response data structure:', response.data);
-        
         if (Array.isArray(response.data)) {
           data = response.data;
-          console.log('Using response.data as array');
         } else if (response.data.data && Array.isArray(response.data.data)) {
           data = response.data.data;
-          console.log('Using response.data.data as array');
         } else if (response.data.attendance && Array.isArray(response.data.attendance)) {
           data = response.data.attendance;
-          console.log('Using response.data.attendance as array');
         } else if (response.data.results && Array.isArray(response.data.results)) {
           data = response.data.results;
-          console.log('Using response.data.results as array');
         } else if (response.data.records && Array.isArray(response.data.records)) {
           data = response.data.records;
-          console.log('Using response.data.records as array');
         } else if (response.data.attendanceLogs && Array.isArray(response.data.attendanceLogs)) {
           data = response.data.attendanceLogs;
-          console.log('Using response.data.attendanceLogs as array');
         }
       }
-
-      console.log('Final attendance data:', data);
-      console.log('First record structure:', data[0]);
       setAttendanceData(data);
     } catch (error) {
       setError(error.response?.data?.error || 'Failed to fetch attendance data');
@@ -92,17 +80,12 @@ const EmployeeCalendar = () => {
     }
     
     const dateStr = new Date(currentYear, currentMonth, day).toISOString().split('T')[0];
-    console.log(`Looking for attendance on ${dateStr}`);
-    console.log('Available attendance data:', attendanceData);
     
     // Try different date field names that might be used
     const attendance = attendanceData.find(a => {
       const recordDate = a.date || a.formattedDate || a.attendanceDate;
-      console.log(`Comparing ${recordDate} with ${dateStr}`);
       return recordDate === dateStr;
     });
-    
-    console.log(`Found attendance for ${dateStr}:`, attendance);
     return attendance;
   };
 

@@ -11,6 +11,31 @@ export const authAPI = {
     return api.post("/auth/register", userData);
   },
 
+  // Step-by-step registration
+  registerStep1: (userData) => {
+    return api.post("/auth/register-step1", userData);
+  },
+
+  registerStep2: (token, personalData) => {
+    return api.post("/auth/register-step2", { token, ...personalData });
+  },
+
+  registerStep3: (userId, experienceData) => {
+    return api.post("/auth/register-step3", { userId, ...experienceData });
+  },
+
+  registerStep4: (userId, password) => {
+    return api.post("/auth/register-step4", { userId, password });
+  },
+
+  verifyInvitation: (token) => {
+    return api.get(`/auth/verify-invitation/${token}`);
+  },
+
+  resendVerification: (email) => {
+    return api.post("/auth/resend-verification", { email });
+  },
+
   // Get current user
   getMe: () => {
     return api.get("/auth/me");

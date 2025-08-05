@@ -12,6 +12,7 @@ const configRoutes = require("./routes/config");
 const requestRoutes = require("./routes/requests");
 const notificationRoutes = require("./routes/notifications");
 const cronService = require("./services/cronService");
+const { initializeSuperAdmin } = require("./controllers/authController");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -119,6 +120,13 @@ const connectDB = async () => {
 const startServer = async () => {
   await connectDB();
 
+  // Initialize super admin if no users exist
+  try {
+    await initializeSuperAdmin();
+  } catch (error) {
+    console.error("❌ Super admin initialization error:", error);
+  }
+
   // Initialize cron service for auto punch-out
   try {
     cronService.init();
@@ -129,6 +137,8 @@ const startServer = async () => {
 
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📧 Super Admin Email: superadmin@yopmail.com`);
+    console.log(`🔑 Super Admin Password: Admin@123`);
   });
 };
 

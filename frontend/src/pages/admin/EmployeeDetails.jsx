@@ -28,6 +28,10 @@ import moment from 'moment';
 const EmployeeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  
+  console.log('EmployeeDetails component rendered with ID:', id);
+  
+
   const [dateRange, setDateRange] = useState({
     startDate: moment().subtract(30, 'days').format('YYYY-MM-DD'),
     endDate: moment().format('YYYY-MM-DD')
@@ -42,6 +46,18 @@ const EmployeeDetails = () => {
   });
 
   const { data, isLoading, error, refetch } = useEmployeeDetails(id, dateRange);
+  
+  console.log('EmployeeDetails React Query state:', {
+    id,
+    isLoading,
+    error: error?.message,
+    hasData: !!data,
+    dataKeys: data ? Object.keys(data) : []
+  });
+  
+
+  
+
 
   const getStatusBadge = (status) => {
     const statusConfig = {
@@ -86,12 +102,8 @@ const EmployeeDetails = () => {
 
   // Handle opening modals for different attendance types
   const handleCardClick = (type) => {
-    console.log('Card clicked:', type);
-    console.log('Attendance data:', attendance);
-    
     // Check if attendance data exists and has the right structure
     if (!attendance) {
-      console.log('No attendance data available');
       return;
     }
 
@@ -104,11 +116,8 @@ const EmployeeDetails = () => {
     } else if (attendance.records && Array.isArray(attendance.records)) {
       attendanceArray = attendance.records;
     } else {
-      console.log('Attendance data structure not recognized:', attendance);
       return;
     }
-
-    console.log('Attendance array:', attendanceArray);
 
     let filteredData = [];
     let title = '';
@@ -144,7 +153,7 @@ const EmployeeDetails = () => {
         return;
     }
 
-    console.log('Filtered data:', filteredData);
+
 
     setModalState({
       isOpen: true,
@@ -184,7 +193,38 @@ const EmployeeDetails = () => {
   }
 
   // Don't render if data is not available yet
-  if (!data || !data.employee) {
+  if (!data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600 dark:text-gray-400">
+            Loading employee data...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if employee data exists
+  if (!data.employee) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
+        <div className="text-center">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
+            Employee data not found
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { employee } = data;
+  const attendance = employee?.attendance?.records || [];
+  const statistics = employee?.attendance?.statistics || {};
+  
+  // Ensure employee data is available
+  if (!employee) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
         <LoadingSpinner size="lg" />
@@ -192,17 +232,8 @@ const EmployeeDetails = () => {
     );
   }
 
-  const { employee, attendance, statistics, recentActivity } = data;
 
-  // Ensure all required data is available
-  if (!employee || !attendance || !statistics) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -397,7 +428,6 @@ const EmployeeDetails = () => {
             <div 
               className="group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer"
               onClick={() => {
-                console.log('Total days card clicked');
                 handleCardClick('total');
               }}
             >
@@ -626,8 +656,8 @@ const EmployeeDetails = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {attendance.records && attendance.records.length > 0 ? (
-                      attendance.records.map((record) => {
+                    {attendance && attendance.length > 0 ? (
+                      attendance.map((record) => {
                         const firstSession = record.punchSessions[0];
                         const lastSession = record.punchSessions[record.punchSessions.length - 1];
                         
@@ -697,7 +727,7 @@ const EmployeeDetails = () => {
               </div>
 
               {/* Pagination */}
-              {attendance.pagination && attendance.pagination.totalPages > 1 && (
+              {data.employee?.attendance?.pagination && data.employee.attendance.pagination.totalPages > 1 && (
                 <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
@@ -705,23 +735,23 @@ const EmployeeDetails = () => {
                         <FiBarChart2 className="w-4 h-4 text-white" />
                       </div>
                       <span>
-                        Showing {((attendance.pagination.currentPage - 1) * 20) + 1} to{' '}
-                        {Math.min(attendance.pagination.currentPage * 20, attendance.pagination.totalRecords)} of{' '}
-                        {attendance.pagination.totalRecords} results
+                        Showing {((data.employee.attendance.pagination.currentPage - 1) * 20) + 1} to{' '}
+                        {Math.min(data.employee.attendance.pagination.currentPage * 20, data.employee.attendance.pagination.totalRecords)} of{' '}
+                        {data.employee.attendance.pagination.totalRecords} results
                       </span>
                     </div>
                     <div className="flex space-x-2">
                       <button
-                        onClick={() => refetch({ page: attendance.pagination.currentPage - 1 })}
-                        disabled={!attendance.pagination.hasPrevPage}
+                        onClick={() => refetch({ page: data.employee.attendance.pagination.currentPage - 1 })}
+                        disabled={!data.employee.attendance.pagination.hasPrevPage}
                         className="flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <FiArrowLeft className="w-4 h-4 mr-1" />
                         Previous
                       </button>
                       <button
-                        onClick={() => refetch({ page: attendance.pagination.currentPage + 1 })}
-                        disabled={!attendance.pagination.hasNextPage}
+                        onClick={() => refetch({ page: data.employee.attendance.pagination.currentPage + 1 })}
+                        disabled={!data.employee.attendance.pagination.hasNextPage}
                         className="flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         Next
@@ -735,81 +765,7 @@ const EmployeeDetails = () => {
 
 
 
-        {/* Recent Activity */}
-        {recentActivity && recentActivity.length > 0 && (
-          <div className="mt-8">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <div className="flex items-center mb-6">
-                <div className="bg-gradient-to-r from-purple-500 to-pink-500 p-2 rounded-lg mr-3">
-                  <FiActivity className="w-5 h-5 text-white" />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Recent Activity</h2>
-              </div>
-              
-              <div className="space-y-4">
-                {recentActivity.slice(0, 5).map((activity) => (
-                  <div key={activity._id} className="flex items-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-                    <div className="flex-shrink-0 mr-4">
-                      {activity.status === 'present' && (
-                        <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-2 rounded-full">
-                          <FiCheckCircle className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      {activity.status === 'absent' && (
-                        <div className="bg-gradient-to-r from-red-500 to-pink-500 p-2 rounded-full">
-                          <FiXCircle className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      {activity.status === 'late' && (
-                        <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-2 rounded-full">
-                          <FiAlertCircle className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      {activity.status === 'leave' && (
-                        <div className="bg-gradient-to-r from-blue-500 to-cyan-500 p-2 rounded-full">
-                          <FiClock className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            {activity.status === 'present' && 'Present'}
-                            {activity.status === 'absent' && 'Absent'}
-                            {activity.status === 'late' && 'Late'}
-                            {activity.status === 'leave' && 'Leave'}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(activity.date)}</p>
-                        </div>
-                        <div className="text-right">
-                          {activity.punchSessions && activity.punchSessions.length > 0 && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              <div className="flex items-center">
-                                <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-0.5 rounded mr-1">
-                                  <FiTrendingUp className="w-3 h-3 text-white" />
-                                </div>
-                                {activity.punchSessions[0]?.punchIn?.time ? formatTime(activity.punchSessions[0].punchIn.time) : 'No punch in'}
-                              </div>
-                              {activity.punchSessions[activity.punchSessions.length - 1]?.punchOut?.time && (
-                                <div className="flex items-center">
-                                  <div className="bg-gradient-to-r from-red-500 to-pink-500 p-0.5 rounded mr-1">
-                                    <FiTrendingDown className="w-3 h-3 text-white" />
-                                  </div>
-                                  {formatTime(activity.punchSessions[activity.punchSessions.length - 1].punchOut.time)}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Recent Activity - Temporarily removed as data is not available from backend */}
 
         {/* Side Modal for Attendance Details */}
         <SideModal

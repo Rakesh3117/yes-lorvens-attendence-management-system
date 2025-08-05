@@ -250,6 +250,384 @@ const createDefaultAdmin = async (req, res) => {
   }
 };
 
+// @desc    Step 1: Initial registration with basic info
+// @route   POST /api/auth/register-step1
+// @access  Public
+const registerStep1 = async (req, res) => {
+  try {
+    const { name, email, employeeId, department, role } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [{ email }, { employeeId }],
+    });
+
+    if (existingUser) {
+      return sendErrorResponse(res, "User with this email or employee ID already exists", 400);
+    }
+
+    // Validate role
+    const validRoles = ["employee", "admin"];
+    const userRole = role && validRoles.includes(role) ? role : "employee";
+
+    // Create new user with basic info
+    const user = await User.create({
+      name,
+      email,
+      employeeId,
+      department,
+      role: userRole,
+      status: "pending",
+      registrationStep: 1,
+    });
+
+    // Generate email verification token
+    const verificationToken = user.createEmailVerificationToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Send verification email
+    try {
+      await emailService.sendEmailVerification(user, verificationToken);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      // Don't fail the request if email fails
+    }
+
+    return sendSuccessResponse(res, {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        role: user.role,
+        registrationStep: user.registrationStep,
+      },
+    }, "Registration step 1 completed. Please check your email for verification.", 201);
+  } catch (error) {
+    return sendErrorResponse(res, "Registration failed. Please try again.");
+  }
+};
+
+// @desc    Step 2: Verify email and add personal details
+// @route   POST /api/auth/register-step2
+// @access  Public
+const registerStep2 = async (req, res) => {
+  try {
+    const { token, mobileNumber, gender, bloodGroup, addressLine, state } = req.body;
+
+    if (!token) {
+      return sendErrorResponse(res, "Verification token is required", 400);
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    // First try to find user by invitation token
+    let user = await User.findOne({
+      invitationToken: hashedToken,
+      invitationTokenExpires: { $gt: Date.now() },
+    });
+
+    // If not found by invitation token, try email verification token (for backward compatibility)
+    if (!user) {
+      user = await User.findOne({
+        emailVerificationToken: hashedToken,
+        emailVerificationExpires: { $gt: Date.now() },
+      });
+    }
+
+    if (!user) {
+      return sendErrorResponse(res, "Verification token is invalid or has expired", 400);
+    }
+
+    // Update personal details
+    user.mobileNumber = mobileNumber;
+    user.gender = gender;
+    user.bloodGroup = bloodGroup;
+    user.addressLine = addressLine;
+    user.state = state;
+    user.registrationStep = 2;
+
+    // If user was found by invitation token, mark email as verified
+    if (user.invitationToken) {
+      user.isEmailVerified = true;
+      user.invitationToken = undefined;
+      user.invitationTokenExpires = undefined;
+    } else {
+      // If user was found by email verification token, clear those fields
+      user.emailVerificationToken = undefined;
+      user.emailVerificationExpires = undefined;
+    }
+
+    await user.save();
+
+    return sendSuccessResponse(res, {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        role: user.role,
+        registrationStep: user.registrationStep,
+      },
+    }, "Personal details updated successfully.");
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to update personal details. Please try again.");
+  }
+};
+
+// @desc    Step 3: Add experience details
+// @route   POST /api/auth/register-step3
+// @access  Public
+const registerStep3 = async (req, res) => {
+  try {
+    const { userId, previousCompany, jobTitle, startDate, endDate, jobDescription } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return sendErrorResponse(res, "User not found", 404);
+    }
+
+    if (!user.isEmailVerified) {
+      return sendErrorResponse(res, "Email must be verified before proceeding", 400);
+    }
+
+    // Update experience details
+    user.previousCompany = previousCompany;
+    user.jobTitle = jobTitle;
+    user.startDate = startDate;
+    user.endDate = endDate;
+    user.jobDescription = jobDescription;
+    user.registrationStep = 3;
+
+    await user.save();
+
+    return sendSuccessResponse(res, {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        role: user.role,
+        registrationStep: user.registrationStep,
+      },
+    }, "Experience details updated successfully.");
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to update experience details. Please try again.");
+  }
+};
+
+// @desc    Step 4: Set password and complete registration
+// @route   POST /api/auth/register-step4
+// @access  Public
+const registerStep4 = async (req, res) => {
+  try {
+    const { userId, password } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return sendErrorResponse(res, "User not found", 404);
+    }
+
+    if (!user.isEmailVerified) {
+      return sendErrorResponse(res, "Email must be verified before proceeding", 400);
+    }
+
+    if (user.registrationStep < 3) {
+      return sendErrorResponse(res, "Please complete previous steps first", 400);
+    }
+
+    // Set password and complete registration
+    user.password = password;
+    user.status = "active";
+    user.registrationStep = 4;
+
+    await user.save();
+
+    // Send welcome email
+    try {
+      await emailService.sendWelcomeEmail(user);
+    } catch (emailError) {
+      console.error("Failed to send welcome email:", emailError);
+    }
+
+    return sendSuccessResponse(res, {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        role: user.role,
+        status: user.status,
+        registrationStep: user.registrationStep,
+      },
+    }, "Registration completed successfully! You can now log in to your account.");
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to complete registration. Please try again.");
+  }
+};
+
+// @desc    Verify invitation token
+// @route   POST /api/auth/verify-invitation
+// @access  Public
+const verifyInvitation = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    console.log("Verifying invitation token:", token);
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    console.log("Hashed token:", hashedToken);
+
+    const user = await User.findOne({
+      invitationToken: hashedToken,
+      invitationTokenExpires: { $gt: Date.now() },
+    });
+
+    console.log("Found user:", user ? user.email : "No user found");
+
+    if (!user) {
+      // Check if token exists but is expired
+      const expiredUser = await User.findOne({ invitationToken: hashedToken });
+      if (expiredUser) {
+        return sendErrorResponse(res, "Invitation token has expired", 400);
+      }
+      return sendErrorResponse(res, "Invitation token is invalid", 400);
+    }
+
+    return sendSuccessResponse(res, {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        employeeId: user.employeeId,
+        department: user.department,
+        role: user.role,
+        status: user.status,
+      },
+    }, "Invitation verified successfully.");
+  } catch (error) {
+    console.error("Error verifying invitation:", error);
+    return sendErrorResponse(res, "Failed to verify invitation. Please try again.");
+  }
+};
+
+// @desc    Resend email verification
+// @route   POST /api/auth/resend-verification
+// @access  Public
+const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return sendErrorResponse(res, "User not found", 404);
+    }
+
+    if (user.isEmailVerified) {
+      return sendErrorResponse(res, "Email is already verified", 400);
+    }
+
+    // Generate new verification token
+    const verificationToken = user.createEmailVerificationToken();
+    await user.save({ validateBeforeSave: false });
+
+    // Send verification email
+    try {
+      await emailService.sendEmailVerification(user, verificationToken);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      return sendErrorResponse(res, "Failed to send verification email. Please try again later.");
+    }
+
+    return sendSuccessResponse(res, null, "Verification email sent successfully.");
+  } catch (error) {
+    return sendErrorResponse(res, "Failed to resend verification email. Please try again.");
+  }
+};
+
+// @desc    Create super admin user
+// @route   POST /api/auth/create-super-admin
+// @access  Public (only for initial setup)
+const createSuperAdmin = async (req, res) => {
+  try {
+    const existingUsers = await User.countDocuments();
+    
+    if (existingUsers > 0) {
+      return sendErrorResponse(res, "Super admin already exists or users exist in the system", 400);
+    }
+
+    const superAdmin = await User.create({
+      name: "Super Administrator",
+      email: "superadmin@yopmail.com",
+      password: "Admin@123",
+      employeeId: "SUPER001",
+      department: "IT",
+      role: "admin",
+      status: "active",
+      isEmailVerified: true,
+      registrationStep: 4,
+    });
+
+    return sendSuccessResponse(res, {
+        user: {
+          id: superAdmin._id,
+          name: superAdmin.name,
+          email: superAdmin.email,
+          employeeId: superAdmin.employeeId,
+          role: superAdmin.role,
+        },
+    }, "Super admin user created successfully", 201);
+  } catch (error) {
+    console.error("Error creating super admin:", error);
+    return sendErrorResponse(res, "Failed to create super admin user");
+  }
+};
+
+// @desc    Initialize super admin if no users exist
+// @access  Internal
+const initializeSuperAdmin = async () => {
+  try {
+    const existingUsers = await User.countDocuments();
+    
+    if (existingUsers === 0) {
+      console.log("No users found in database. Creating super admin...");
+      
+      const superAdmin = await User.create({
+        name: "Super Administrator",
+        email: "superadmin@yopmail.com",
+        password: "Admin@123",
+        employeeId: "SUPER001",
+        department: "IT",
+        role: "admin",
+        status: "active",
+        isEmailVerified: true,
+        registrationStep: 4,
+      });
+
+      console.log("✅ Super admin created successfully:");
+      console.log(`   Email: ${superAdmin.email}`);
+      console.log(`   Password: Admin@123`);
+      console.log(`   Employee ID: ${superAdmin.employeeId}`);
+      console.log(`   Role: ${superAdmin.role}`);
+      
+      return superAdmin;
+    } else {
+      console.log("Users already exist in database. Skipping super admin creation.");
+      return null;
+    }
+  } catch (error) {
+    console.error("❌ Error creating super admin:", error);
+    return null;
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -259,4 +637,12 @@ module.exports = {
   forgotPassword,
   resetPassword,
   createDefaultAdmin,
+  registerStep1,
+  registerStep2,
+  registerStep3,
+  registerStep4,
+  verifyInvitation,
+  resendVerification,
+  createSuperAdmin,
+  initializeSuperAdmin,
 };

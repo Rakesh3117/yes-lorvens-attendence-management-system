@@ -36,10 +36,8 @@ const Attendance = () => {
     setAttendance(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      console.log('Fetching attendance for date:', date);
       // Use the attendance API with the fixed backend logic
       const response = await adminAPI.getTodayAttendance(date);
-      console.log('Attendance response:', response);
       setAttendance({
         employees: response.data.data.employees || [],
         statusSummary: response.data.data.statusSummary || {},

@@ -131,6 +131,23 @@ const validateResetPassword = [
   handleValidationErrors,
 ];
 
+// Validation rules for registration password setting
+const validateRegistrationPassword = [
+  body("userId")
+    .notEmpty()
+    .withMessage("User ID is required"),
+
+  body("password")
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters long")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage(
+      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    ),
+
+  handleValidationErrors,
+];
+
 // Validation rules for employee creation (admin)
 const validateEmployeeCreation = [
   body("name")
@@ -458,6 +475,10 @@ const validateDateRangeLogic = (req, res, next) => {
 
 // Validation rules for account verification
 const validateAccountVerification = [
+  body("token")
+    .notEmpty()
+    .withMessage("Verification token is required"),
+
   body("fullName")
     .optional()
     .trim()
@@ -472,29 +493,6 @@ const validateAccountVerification = [
     .optional()
     .isIn(["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"])
     .withMessage("Please select a valid blood group"),
-
-  body("employeeId")
-    .optional()
-    .trim()
-    .isLength({ min: 3, max: 20 })
-    .withMessage("Employee ID must be between 3 and 20 characters")
-    .matches(/^[A-Za-z0-9\-_\.]+$/)
-    .withMessage(
-      "Employee ID can contain letters, numbers, hyphens, underscores, and dots"
-    ),
-
-  body("password")
-    .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters long")
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage(
-      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-    ),
-
-  body("email")
-    .isEmail()
-    .normalizeEmail()
-    .withMessage("Please provide a valid email address"),
 
   body("mobileNumber")
     .matches(/^[0-9]{10}$/)
@@ -626,6 +624,7 @@ module.exports = {
   validatePasswordChange,
   validateForgotPassword,
   validateResetPassword,
+  validateRegistrationPassword,
   validateEmployeeCreation,
   validateProfileUpdate,
   validateEmployeeUpdate,

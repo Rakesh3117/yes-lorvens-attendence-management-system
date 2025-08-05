@@ -370,6 +370,52 @@ class EmailService {
       text,
     });
   }
+
+  async sendEmailVerification(user, verificationToken) {
+    const verificationURL = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">Verify Your Email Address</h2>
+        <p>Hello ${user.name},</p>
+        <p>Thank you for registering with X Company! To complete your registration, please verify your email address.</p>
+        <p>Click the button below to verify your email:</p>
+        <a href="${verificationURL}" style="display: inline-block; background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0;">
+          Verify Email
+        </a>
+        <p>If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #666;">${verificationURL}</p>
+        <p>This verification link will expire in 24 hours.</p>
+        <p>If you didn't create an account with us, please ignore this email.</p>
+        <p>Best regards,<br>X Company IT Team</p>
+      </div>
+    `;
+
+    const text = `
+      Verify Your Email Address
+      
+      Hello ${user.name},
+      
+      Thank you for registering with X Company! To complete your registration, please verify your email address.
+      
+      Click the link below to verify your email:
+      ${verificationURL}
+      
+      This verification link will expire in 24 hours.
+      
+      If you didn't create an account with us, please ignore this email.
+      
+      Best regards,
+      X Company IT Team
+    `;
+
+    return this.sendEmail({
+      to: user.email,
+      subject: "Verify Your Email - X Company",
+      html,
+      text,
+    });
+  }
 }
 
 module.exports = new EmailService();

@@ -209,7 +209,7 @@ const createEmployee = async (req, res) => {
     await employee.save();
 
     // Generate invitation token for the new employee
-    await employee.generateInvitationToken();
+    const invitationToken = await employee.generateInvitationToken();
 
     // Send invitation email with verification token
     try {
@@ -227,7 +227,7 @@ const createEmployee = async (req, res) => {
       await emailService.sendEmployeeInvitation(
         userForEmail,
         adminName,
-        employee.invitationToken
+        invitationToken
       );
     } catch (emailError) {
       console.error("Failed to send invitation email:", emailError);

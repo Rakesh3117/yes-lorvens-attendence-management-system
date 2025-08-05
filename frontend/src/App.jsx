@@ -13,8 +13,11 @@ import EmployeeLayout from './layouts/EmployeeLayout';
 
 // Auth Pages
 import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
+import VerifyEmail from './pages/auth/VerifyEmail';
+import VerifyInvitation from './pages/auth/VerifyInvitation';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/Dashboard';
@@ -62,8 +65,11 @@ function App() {
               <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<DesktopOnlyRoute><Login /></DesktopOnlyRoute>} />
+              <Route path="/register" element={<DesktopOnlyRoute><Register /></DesktopOnlyRoute>} />
               <Route path="/forgot-password" element={<DesktopOnlyRoute><ForgotPassword /></DesktopOnlyRoute>} />
               <Route path="/reset-password/:token" element={<ResetPassword />} />
+              <Route path="/verify-email/:token" element={<VerifyEmail />} />
+              <Route path="/verify-invitation/:token" element={<VerifyInvitation />} />
             
             {/* Admin Routes */}
             <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']} />}>

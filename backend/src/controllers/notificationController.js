@@ -9,11 +9,16 @@ const getNotifications = async (req, res) => {
     const { page = 1, limit = 20, unreadOnly = false } = req.query;
     const skip = (page - 1) * limit;
 
+    console.log('getNotifications called for user:', req.user._id);
+    console.log('Query params:', { page, limit, unreadOnly });
+
     // Build query
     const query = { recipient: req.user._id };
     if (unreadOnly === "true") {
       query.isRead = false;
     }
+
+    console.log('Query:', query);
 
     // Get notifications with pagination
     const notifications = await Notification.find(query)
@@ -22,6 +27,8 @@ const getNotifications = async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+
+    console.log('Found notifications:', notifications.length);
 
     // Get total count
     const total = await Notification.countDocuments(query);
@@ -33,6 +40,9 @@ const getNotifications = async (req, res) => {
       isRead: false,
     });
 
+    console.log('Total notifications:', total);
+    console.log('Unread count:', unreadCount);
+
     const pagination = calculatePagination(page, limit, total);
 
     return sendSuccessResponse(res, {
@@ -41,11 +51,12 @@ const getNotifications = async (req, res) => {
         unreadCount,
     });
   } catch (error) {
+    console.error('Error in getNotifications:', error);
     return sendErrorResponse(res, "Failed to fetch notifications");
   }
 };
 
-// Mark notification as read and delete it
+// Mark notification as read (don't delete immediately)
 const markAsRead = async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -63,16 +74,14 @@ const markAsRead = async (req, res) => {
       return sendErrorResponse(res, "Notification not found", 404);
     }
 
-    // Delete the notification after marking as read
-    await Notification.findByIdAndDelete(notificationId);
-
-    return sendSuccessResponse(res, null, "Notification marked as read and deleted");
+    // Don't delete immediately - let user delete manually or auto-delete after some time
+    return sendSuccessResponse(res, notification, "Notification marked as read");
   } catch (error) {
     return sendErrorResponse(res, "Failed to mark notification as read");
   }
 };
 
-// Mark all notifications as read and delete them
+// Mark all notifications as read (don't delete immediately)
 const markAllAsRead = async (req, res) => {
   try {
     // Get all unread notifications for the user
@@ -94,10 +103,8 @@ const markAllAsRead = async (req, res) => {
       }
     );
 
-    // Delete all notifications for the user
-    await Notification.deleteMany({ recipient: req.user._id });
-
-    return sendSuccessResponse(res, null, "All notifications marked as read and deleted");
+    // Don't delete all notifications - let user manage them manually
+    return sendSuccessResponse(res, null, "All notifications marked as read");
   } catch (error) {
     return sendErrorResponse(res, "Failed to mark notifications as read");
   }
@@ -126,14 +133,30 @@ const deleteNotification = async (req, res) => {
 // Get unread notification count
 const getUnreadCount = async (req, res) => {
   try {
+    console.log('getUnreadCount called for user:', req.user._id);
+    
     const count = await Notification.countDocuments({
       recipient: req.user._id,
       isRead: false,
     });
 
+    console.log('Unread count for user:', req.user._id, 'is:', count);
+
     return sendSuccessResponse(res, { unreadCount: count });
   } catch (error) {
+    console.error('Error in getUnreadCount:', error);
     return sendErrorResponse(res, "Failed to get unread count");
+  }
+};
+
+// Cleanup old notifications (admin only)
+const cleanupOldNotifications = async (req, res) => {
+  try {
+    const result = await Notification.cleanupOldNotifications();
+    return sendSuccessResponse(res, result, "Old notifications cleaned up successfully");
+  } catch (error) {
+    console.error('Error in cleanupOldNotifications:', error);
+    return sendErrorResponse(res, "Failed to cleanup old notifications");
   }
 };
 
@@ -180,6 +203,7 @@ const createNotification = async (
     await notification.save();
     
     console.log('Notification created successfully:', notification._id);
+    console.log('Saved notification:', notification);
     return notification;
   } catch (error) {
     console.error('Error in createNotification:', error);
@@ -191,10 +215,17 @@ const createNotification = async (
 const createRequestNotification = async (request) => {
   try {
     console.log('createRequestNotification called for request:', request._id);
+    console.log('Request object:', request);
     
     // Get all admin users
     const admins = await User.find({ role: "admin", status: "active" });
     console.log('Found admin users:', admins.length);
+    console.log('Admin users:', admins.map(admin => ({ id: admin._id, name: admin.name, role: admin.role, status: admin.status })));
+
+    if (admins.length === 0) {
+      console.log('No active admin users found - no notifications will be created');
+      return;
+    }
 
     for (const admin of admins) {
       console.log('Creating notification for admin:', admin._id);
@@ -219,11 +250,27 @@ const createRequestNotification = async (request) => {
 const createStatusUpdateNotification = async (request) => {
   try {
     console.log('createStatusUpdateNotification called for request:', request._id, 'Status:', request.status);
+    console.log('Request object for status update:', {
+      _id: request._id,
+      employeeId: request.employeeId,
+      approvedBy: request.approvedBy,
+      type: request.type,
+      status: request.status
+    });
     
     const statusText = request.status === "approved" ? "approved" : "rejected";
     const notificationType = request.status === "approved" ? "REQUEST_APPROVED" : "REQUEST_REJECTED";
 
     console.log('Creating notification for employee:', request.employeeId);
+    console.log('Notification details:', {
+      recipientId: request.employeeId,
+      senderId: request.approvedBy,
+      type: notificationType,
+      title: `Request ${statusText.charAt(0).toUpperCase() + statusText.slice(1)}`,
+      message: `Your ${request.type} request has been ${statusText}.`,
+      relatedData: { requestId: request._id }
+    });
+
     await createNotification(
       request.employeeId,
       request.approvedBy,
@@ -245,6 +292,7 @@ module.exports = {
   markAllAsRead,
   deleteNotification,
   getUnreadCount,
+  cleanupOldNotifications,
   createNotification,
   createRequestNotification,
   createStatusUpdateNotification,

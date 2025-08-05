@@ -24,8 +24,8 @@ export const useNotifications = (params = {}) => {
       console.log('Fetching notifications with params:', { ...params, page: currentPage });
       return getNotificationsAPI({ ...params, page: currentPage });
     },
-    staleTime: 300000, // 5 minutes - data stays fresh for 5 minutes
-    refetchInterval: false, // No automatic polling - only manual refresh
+    staleTime: 30000, // 30 seconds - data stays fresh for 30 seconds
+    refetchInterval: 30000, // Poll every 30 seconds for real-time updates
     onSuccess: (data) => {
       console.log('Notifications fetched successfully:', data);
     },
@@ -45,8 +45,8 @@ export const useNotifications = (params = {}) => {
       console.log('Fetching unread count');
       return getUnreadCountAPI();
     },
-    staleTime: 300000, // 5 minutes - data stays fresh for 5 minutes
-    refetchInterval: false, // No automatic polling - only manual refresh
+    staleTime: 30000, // 30 seconds - data stays fresh for 30 seconds
+    refetchInterval: 30000, // Poll every 30 seconds for real-time updates
     onSuccess: (data) => {
       console.log('Unread count fetched successfully:', data);
     },

@@ -22,12 +22,12 @@ const CustomCalendar = ({
     let datepicker = null;
     
     if (datepickerRef.current && !disabled) {
-      console.log('Initializing datepicker with selectedDate:', selectedDate);
+
       
       // Destroy any existing datepicker first
       if (datepickerRef.current._datepicker) {
         try {
-          console.log('Destroying existing datepicker');
+  
           datepickerRef.current._datepicker.destroy();
         } catch (error) {
           console.warn('Error destroying existing datepicker:', error);
@@ -61,8 +61,6 @@ const CustomCalendar = ({
         datepickerRef.current._datepicker = datepicker;
 
         // Test if datepicker is working
-        console.log('Datepicker instance:', datepicker);
-        console.log('Datepicker methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(datepicker)));
 
         // Set initial value if selectedDate is provided
         if (selectedDate) {
@@ -74,14 +72,11 @@ const CustomCalendar = ({
 
         const handleDateChange = (e) => {
           const date = e.target.value;
-          console.log('Raw date from datepicker:', date);
           
           // Ensure the date is in the correct format
           if (date && typeof date === 'string') {
-            console.log('Setting selectedValue to:', date);
             setSelectedValue(date);
             if (onDateSelect) {
-              console.log('Calling onDateSelect with:', date);
               onDateSelect(date);
             }
           } else {
@@ -91,7 +86,7 @@ const CustomCalendar = ({
 
         datepickerRef.current.addEventListener('changeDate', handleDateChange);
         
-        console.log('Datepicker initialized successfully');
+
       } catch (error) {
         console.error('Error creating datepicker:', error);
       }
@@ -115,7 +110,6 @@ const CustomCalendar = ({
   // Update selected value when selectedDate prop changes
   useEffect(() => {
     if (selectedDate) {
-      console.log('selectedDate prop changed:', selectedDate);
       setSelectedValue(selectedDate);
       
       // Manually update the input field if the datepicker ref exists
@@ -139,7 +133,6 @@ const CustomCalendar = ({
     return () => {
       if (datepickerRef.current && datepickerRef.current._datepicker) {
         try {
-          console.log('Component unmounting, destroying datepicker');
           datepickerRef.current._datepicker.destroy();
           delete datepickerRef.current._datepicker;
         } catch (error) {
@@ -160,7 +153,6 @@ const CustomCalendar = ({
     if (!dateStr) return '';
     
     try {
-      console.log('Formatting date:', dateStr);
       
       // Handle different date formats
       let year, month, day;
@@ -209,7 +201,6 @@ const CustomCalendar = ({
         day: 'numeric'
       });
       
-      console.log('Successfully formatted date:', formatted);
       return formatted;
     } catch (error) {
       console.error('Error formatting date:', error, 'Input:', dateStr);
@@ -242,7 +233,6 @@ const CustomCalendar = ({
           onClick={() => {
             if (!disabled && datepickerRef.current && datepickerRef.current._datepicker) {
               try {
-                console.log('Attempting to show datepicker');
                 datepickerRef.current._datepicker.show();
               } catch (error) {
                 console.warn('Error showing datepicker:', error);
@@ -250,11 +240,7 @@ const CustomCalendar = ({
                 datepickerRef.current.focus();
               }
             } else {
-              console.log('Datepicker not available:', {
-                disabled,
-                hasRef: !!datepickerRef.current,
-                hasDatepicker: !!(datepickerRef.current && datepickerRef.current._datepicker)
-              });
+              // Datepicker not available
             }
           }}
         />

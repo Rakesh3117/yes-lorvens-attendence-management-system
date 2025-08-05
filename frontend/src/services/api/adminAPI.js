@@ -10,8 +10,12 @@ export const adminAPI = {
     return api.get("/admin/employees/next-id");
   },
 
-  getEmployeeDetails: (id) => {
-    return api.get(`/admin/employees/${id}/details`);
+  getEmployeeDetails: (id, dateRange = null) => {
+    const params = dateRange ? { 
+      startDate: dateRange.startDate, 
+      endDate: dateRange.endDate 
+    } : {};
+    return api.get(`/admin/employees/${id}/details`, { params });
   },
 
   createEmployee: (employeeData) => {

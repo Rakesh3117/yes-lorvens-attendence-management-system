@@ -65,7 +65,7 @@ const Reports = () => {
       
       // Debug logging
       if (typeof filters.department === 'object') {
-        console.warn('Department filter is an object:', filters.department);
+        // Department filter is an object
       }
       
       if (departmentFilter && departmentFilter !== 'all') {
@@ -107,10 +107,7 @@ const Reports = () => {
       
       if (isToday) {
         // Use getTodayAttendance for today's date to ensure consistency
-        console.log('Using getTodayAttendance for today');
         response = await adminAPI.getTodayAttendance(today);
-        
-        console.log('getTodayAttendance response:', response.data);
         
         // Transform the response to match the reports format
         const transformedResults = response.data.data.employees.map(employee => ({
@@ -126,12 +123,9 @@ const Reports = () => {
           punchOut: employee.punchOut
         }));
         
-        console.log('Transformed results:', transformedResults);
-        
         response.data.data.results = transformedResults;
       } else {
         // Use getReports for historical dates
-        console.log('Using getReports for historical dates');
         response = await adminAPI.getReports({
           startDate: filters.startDate,
           endDate: filters.endDate,
@@ -140,13 +134,10 @@ const Reports = () => {
         });
       }
 
-      console.log('Reports API response:', response.data);
-      
       // Debug: Check for E-104 specifically
       const e104Records = response.data.data.results?.filter(record => 
         record._id.employeeId === 'E-104'
       ) || [];
-      console.log('E-104 records in response:', e104Records);
 
       setReports({
         results: response.data.data.results || [],
@@ -224,13 +215,9 @@ const Reports = () => {
   const generateEmployeeRows = () => {
     if (!employees.results || employees.results.length === 0) return [];
 
-    console.log('Employees results:', employees.results);
-    console.log('Reports results:', reports.results);
-
     // Group attendance records by employee
     const attendanceMap = {};
     if (reports.results && reports.results.length > 0) {
-      console.log('Reports API response structure:', reports.results[0]);
       reports.results.forEach(record => {
         const employeeId = record._id.employeeId;
         const date = record._id.date;
@@ -239,7 +226,6 @@ const Reports = () => {
         }
         attendanceMap[employeeId][date] = record;
       });
-      console.log('Attendance map:', attendanceMap);
     }
 
     const rows = [];
@@ -247,8 +233,6 @@ const Reports = () => {
     const endDate = new Date(filters.endDate + 'T00:00:00');
 
     employees.results.forEach(employee => {
-      console.log(`Processing employee: ${employee.name} (${employee.employeeId})`);
-      console.log(`Employee attendance data:`, attendanceMap[employee.employeeId]);
       
       // Employee row
       const employeeRow = (
@@ -285,7 +269,7 @@ const Reports = () => {
               
               // Debug logging for E-104
               if (employee.employeeId === 'E-104') {
-                console.log(`E-104 for date ${dateStr}:`, record);
+                // E-104 record found
               }
 
               return (
@@ -334,14 +318,11 @@ const Reports = () => {
     const startDate = new Date(filters.startDate + 'T00:00:00');
     const endDate = new Date(filters.endDate + 'T00:00:00');
 
-    console.log('Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString() });
-
     const dateHeaders = [];
     let currentDate = new Date(endDate);
 
     while (currentDate >= startDate) {
       const dateStr = currentDate.toISOString().split('T')[0];
-      console.log('Processing date:', dateStr);
       dateHeaders.push(
         <th key={dateStr} className="px-3 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px] border-r border-gray-200 dark:border-gray-600">
           <div className="flex flex-col">

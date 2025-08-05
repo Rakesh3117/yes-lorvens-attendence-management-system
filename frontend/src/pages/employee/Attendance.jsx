@@ -58,9 +58,7 @@ const EmployeeAttendance = () => {
         // Today only - use the same date for start and end
         startDateStr = todayStr;
         endDateStr = todayStr;
-        console.log('Today filter (IST) - Start:', startDateStr, 'End:', endDateStr);
-        console.log('UTC today:', utcTodayStr);
-        console.log('IST today:', todayStr);
+
         break;
       case 'week':
         // Last 7 days including today
@@ -68,20 +66,20 @@ const EmployeeAttendance = () => {
         weekStart.setDate(indianTime.getDate() - 6);
         startDateStr = weekStart.toISOString().split('T')[0];
         endDateStr = todayStr;
-        console.log('Week filter (IST) - Start:', startDateStr, 'End:', endDateStr);
+
         break;
       case 'month':
         // Current month
         const monthStart = new Date(indianTime.getFullYear(), indianTime.getMonth(), 1);
         startDateStr = monthStart.toISOString().split('T')[0];
         endDateStr = todayStr;
-        console.log('Month filter (IST) - Start:', startDateStr, 'End:', endDateStr);
+
         break;
       case 'custom':
         if (customStartDate && customEndDate) {
           startDateStr = customStartDate;
           endDateStr = customEndDate;
-          console.log('Custom filter - Start:', startDateStr, 'End:', endDateStr);
+
         } else {
           // Fallback to today if custom dates not set
           startDateStr = todayStr;
@@ -138,67 +136,26 @@ const EmployeeAttendance = () => {
     refreshKey: refreshKey // Add refresh key to force cache busting
   };
   
-  // Ensure today's data is included when date filter is 'day'
-  if (dateFilter === 'day') {
-    console.log('Day filter detected - ensuring today\'s data is included');
-    console.log('Start date:', dateParams.startDate);
-    console.log('End date:', dateParams.endDate);
-    
-    // Double-check that we're using the correct date format
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    console.log('Current UTC date:', todayStr);
-    
-    // If the dates don't match today, use today's date
-    if (dateParams.startDate !== todayStr || dateParams.endDate !== todayStr) {
-      console.log('Date mismatch detected - using today\'s date');
+      // Ensure today's data is included when date filter is 'day'
+    if (dateFilter === 'day') {
+      // Double-check that we're using the correct date format
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      // If the dates don't match today, use today's date
+      if (dateParams.startDate !== todayStr || dateParams.endDate !== todayStr) {
       dateParams.startDate = todayStr;
       dateParams.endDate = todayStr;
     }
   }
   
-  console.log('Date params for API calls:', dateParams);
-  console.log('Custom date valid:', isCustomDateValid());
-  
-  // Debug: Log today's status structure
-  console.log('Today status response:', todayStatusResponse);
-  console.log('Today date:', todayDate);
-  console.log('Today status data:', todayStatus);
-  console.log('Can punch in:', todayStatus?.canPunchIn);
-  console.log('Can punch out:', todayStatus?.canPunchOut);
-  console.log('Current session:', todayStatus?.currentSession);
-  if (todayStatus?.currentSession) {
-    console.log('Current session structure:', todayStatus.currentSession);
-    console.log('Current session punch in time:', todayStatus.currentSession.punchIn?.time);
-    console.log('Current session hours:', todayStatus.currentSession.sessionHours);
-  }
+
   
   const { data: attendanceHistory, isLoading: historyLoading, error: historyError, refetch: refetchAttendanceHistory } = useAttendanceHistory(
     dateFilter === 'custom' && !isCustomDateValid() ? {} : dateParams
   );
   
-  // Debug: Log attendance history details
-  console.log('Date filter:', dateFilter);
-  console.log('Date params for history:', dateParams);
-  console.log('Attendance history response:', attendanceHistory);
-  console.log('History records count:', attendanceHistory?.records?.length || 0);
-  console.log('History total count:', attendanceHistory?.total || 0);
-  
-  // Debug: Log first record's sessions if available
-  if (attendanceHistory?.records && attendanceHistory.records.length > 0) {
-    const firstRecord = attendanceHistory.records[0];
-    console.log('First record sessions:', firstRecord.punchSessions);
-    console.log('First record sessions count:', firstRecord.punchSessions?.length || 0);
-    if (firstRecord.punchSessions && firstRecord.punchSessions.length > 0) {
-      firstRecord.punchSessions.forEach((session, index) => {
-        console.log(`First record session ${index + 1}:`, {
-          punchIn: session.punchIn,
-          punchOut: session.punchOut,
-          sessionHours: session.sessionHours
-        });
-      });
-    }
-  }
+
   
   // Check if today's data is included in attendance history
   const today = new Date().toISOString().split('T')[0];
@@ -206,66 +163,35 @@ const EmployeeAttendance = () => {
     const recordDate = record.formattedDate || record.date;
     return recordDate && recordDate.includes(today);
   });
-  console.log('Today\'s date:', today);
-  console.log('Has today data in history:', hasTodayData);
-  console.log('Today status has attendance:', todayStatus?.hasAttendance);
+
   const { data: stats, isLoading: statsLoading, error: statsError } = useAttendanceStats(
     dateFilter === 'custom' && !isCustomDateValid() ? {} : dateParams
   );
   
-  console.log('Attendance history data:', attendanceHistory);
-  console.log('Stats data:', stats);
-  console.log('History loading:', historyLoading, 'History error:', historyError);
-  
-  // Debug: Log the first record structure if available
-  if (attendanceHistory?.records && attendanceHistory.records.length > 0) {
-    console.log('First record structure:', attendanceHistory.records[0]);
-    console.log('First record formatted times:', {
-      firstPunchInTime: attendanceHistory.records[0].firstPunchInTime,
-      lastPunchOutTime: attendanceHistory.records[0].lastPunchOutTime,
-      formattedDate: attendanceHistory.records[0].formattedDate
-    });
-    if (attendanceHistory.records[0].punchSessions && attendanceHistory.records[0].punchSessions.length > 0) {
-      console.log('First session structure:', attendanceHistory.records[0].punchSessions[0]);
-      console.log('First session formatted times:', {
-        punchInFormatted: attendanceHistory.records[0].punchSessions[0].punchIn?.formattedTime,
-        punchOutFormatted: attendanceHistory.records[0].punchSessions[0].punchOut?.formattedTime
-      });
-    }
-  }
+
   
   const punchInMutation = usePunchIn();
   const punchOutMutation = usePunchOut();
 
   // Refetch data when date filter changes
   useEffect(() => {
-    console.log('Date filter changed to:', dateFilter);
-    console.log('Custom date toggle:', showCustomDate);
-    console.log('Custom dates:', { customStartDate, customEndDate });
+    // Date filter changed
   }, [dateFilter, showCustomDate, customStartDate, customEndDate]);
 
   // Ensure Today API is called on component mount
   useEffect(() => {
-    console.log('EmployeeAttendance component mounted - calling Today API');
     refetchTodayStatus();
   }, []);
 
   // Ensure attendance history is fetched when date filter changes
   useEffect(() => {
-    console.log('Date filter or date params changed - refetching attendance history');
-    console.log('Current date filter:', dateFilter);
-    console.log('Current date params:', dateParams);
+    // Date filter or date params changed
     refetchAttendanceHistory();
   }, [dateFilter, dateParams.startDate, dateParams.endDate, refetchAttendanceHistory]);
 
   // Debug: Log when today status changes
   useEffect(() => {
-    console.log('Today status changed:', {
-      canPunchIn: todayStatus?.canPunchIn,
-      canPunchOut: todayStatus?.canPunchOut,
-      hasCurrentSession: !!todayStatus?.currentSession,
-      currentSession: todayStatus?.currentSession
-    });
+    // Today status changed
   }, [todayStatus]);
 
   // Prevent body scroll when modal is open
@@ -285,7 +211,7 @@ const EmployeeAttendance = () => {
   const formatTime = (timeValue) => {
     if (!timeValue) return 'N/A';
     
-    console.log('formatTime called with:', timeValue, 'Type:', typeof timeValue, 'Value:', timeValue);
+
     
     // If it's already a simple time string (HH:MM format from backend)
     if (typeof timeValue === 'string' && timeValue.match(/^\d{1,2}:\d{2}$/)) {
@@ -298,8 +224,7 @@ const EmployeeAttendance = () => {
       
       const timeString = `${displayHours}:${displayMinutes} ${ampm}`;
       
-      console.log('Simple time format - Hours:', hours, 'Minutes:', minutes);
-      console.log('Formatted time:', timeString);
+
       
       return timeString;
     }
@@ -338,8 +263,7 @@ const EmployeeAttendance = () => {
     
     const timeString = `${displayHours}:${displayMinutes} ${ampm}`;
     
-    console.log('Date object - Hours:', hours, 'Minutes:', minutes);
-    console.log('Formatted time:', timeString);
+
     
     return timeString;
   };
@@ -352,15 +276,12 @@ const EmployeeAttendance = () => {
   };
 
   const handlePunchIn = async () => {
-    console.log('Punch in button clicked');
     getUserLocation();
     try {
-      console.log('Sending punch in request with data:', { location, notes: 'Punched in via web interface' });
       const result = await punchInMutation.mutateAsync({
         location,
         notes: 'Punched in via web interface'
       });
-      console.log('Punch in successful:', result);
       
       // The mutation will automatically invalidate the cache and refetch
       // No need for manual refetch calls
@@ -371,15 +292,12 @@ const EmployeeAttendance = () => {
   };
 
   const handlePunchOut = async () => {
-    console.log('Punch out button clicked');
     getUserLocation();
     try {
-      console.log('Sending punch out request with data:', { location, notes: 'Punched out via web interface' });
       const result = await punchOutMutation.mutateAsync({
         location,
         notes: 'Punched out via web interface'
       });
-      console.log('Punch out successful:', result);
       
       // The mutation will automatically invalidate the cache and refetch
       // No need for manual refetch calls
@@ -390,21 +308,6 @@ const EmployeeAttendance = () => {
   };
 
   const handleShowSessionDetails = (record) => {
-    console.log('Opening session details for record:', record);
-    console.log('Record punch sessions:', record.punchSessions);
-    console.log('Number of sessions:', record.punchSessions?.length || 0);
-    
-    // Log each session details
-    if (record.punchSessions && record.punchSessions.length > 0) {
-      record.punchSessions.forEach((session, index) => {
-        console.log(`Session ${index + 1}:`, {
-          punchIn: session.punchIn,
-          punchOut: session.punchOut,
-          sessionHours: session.sessionHours,
-          _id: session._id
-        });
-      });
-    }
     
     setSelectedRecord(record);
     setShowSessionDetails(true);
@@ -424,7 +327,6 @@ const EmployeeAttendance = () => {
       );
       
       if (updatedRecord) {
-        console.log('Updating selectedRecord with fresh data:', updatedRecord);
         setSelectedRecord(updatedRecord);
       }
     }
@@ -438,7 +340,6 @@ const EmployeeAttendance = () => {
   
   // If date filter is 'day' and today's data is missing but we have today status, add it
   if (dateFilter === 'day' && !hasTodayData && todayStatus?.hasAttendance) {
-    console.log('Adding today\'s data to attendance history');
     
     const todayRecord = {
       _id: 'today-record',
@@ -459,10 +360,7 @@ const EmployeeAttendance = () => {
       punchSessions: todayStatus.punchSessions || (todayStatus.currentSession ? [todayStatus.currentSession] : [])
     };
     
-    console.log('Created today record with sessions:', todayRecord.punchSessions);
-    
     enhancedRecords = [todayRecord, ...enhancedRecords];
-    console.log('Enhanced records with today\'s data:', enhancedRecords);
   }
   
   const currentRecords = enhancedRecords.slice(indexOfFirstRecord, indexOfLastRecord) || [];
@@ -479,7 +377,6 @@ const EmployeeAttendance = () => {
 
   // Loading states
   if (todayLoading) {
-    console.log('Today API is loading...');
     return (
       <div className="p-8 flex items-center justify-center">
         <div className="text-center">
@@ -492,7 +389,6 @@ const EmployeeAttendance = () => {
 
   // Error state
   if (todayError) {
-    console.log('Today API error:', todayError);
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">

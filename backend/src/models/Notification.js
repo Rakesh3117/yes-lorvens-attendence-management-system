@@ -73,4 +73,17 @@ notificationSchema.virtual("timeAgo").get(function () {
 notificationSchema.set("toJSON", { virtuals: true });
 notificationSchema.set("toObject", { virtuals: true });
 
+// Static method to clean up old notifications (older than 30 days)
+notificationSchema.statics.cleanupOldNotifications = async function() {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const result = await this.deleteMany({
+    createdAt: { $lt: thirtyDaysAgo }
+  });
+  
+  console.log(`Cleaned up ${result.deletedCount} old notifications`);
+  return result;
+};
+
 module.exports = mongoose.model("Notification", notificationSchema);

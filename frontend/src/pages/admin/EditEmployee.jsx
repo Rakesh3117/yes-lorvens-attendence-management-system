@@ -56,11 +56,8 @@ const EditEmployee = () => {
     const fetchEmployee = async () => {
       try {
         setLoading(true);
-        console.log('Fetching employee with ID:', id);
         const response = await adminAPI.getEmployeeDetails(id);
-        console.log('Employee details response:', response);
         const employeeData = response.data.data.employee;
-        console.log('Employee data:', employeeData);
         setEmployee(employeeData);
         
         // Pre-populate form using reset
@@ -89,10 +86,7 @@ const EditEmployee = () => {
     try {
       // Remove employeeId from data since it shouldn't be changed
       const { employeeId, ...submitData } = data;
-      console.log('Form data being submitted:', submitData);
-      console.log('Employee ID:', id);
       await updateEmployeeMutation.mutateAsync({ id, employeeData: submitData });
-      console.log('Update successful, navigating to details page');
       navigate(`/admin/employees/${id}/details`);
     } catch (err) {
       console.error('Error updating employee:', err);

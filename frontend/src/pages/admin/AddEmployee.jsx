@@ -25,7 +25,6 @@ const AddEmployee = () => {
 
   // Watch form data for debugging
   const formData = watch();
-  console.log('Form data:', formData);
 
   const createEmployeeMutation = useCreateEmployee();
 
@@ -67,15 +66,11 @@ const AddEmployee = () => {
 
   // Debug: Log form data on change
   const logFormData = (data) => {
-    console.log('Current form data:', data);
+    // Form data logging
   };
 
   const onSubmit = async (data) => {
     try {
-      console.log('Original form data:', data);
-      console.log('Form data being submitted:', data);
-      console.log('Submit data keys:', Object.keys(data));
-      console.log('Submit data values:', Object.values(data));
       
       const response = await createEmployeeMutation.mutateAsync(data);
       reset(); // Reset form after successful submission

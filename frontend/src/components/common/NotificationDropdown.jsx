@@ -21,13 +21,11 @@ const NotificationDropdown = () => {
     handleMarkAllAsRead,
     handleDeleteNotification,
     handlePageChange,
-    pagination
+    pagination,
+    refreshData
   } = useNotifications({ limit: 10 });
 
   // Debug logging
-  console.log('NotificationDropdown - notifications:', notifications);
-  console.log('NotificationDropdown - unreadCount:', unreadCount);
-  console.log('NotificationDropdown - notificationsLoading:', notificationsLoading);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -95,8 +93,8 @@ const NotificationDropdown = () => {
       await handleMarkAsRead(notification._id);
     }
 
-    // Delete the notification after marking as read
-    await handleDeleteNotification(notification._id);
+    // Don't delete immediately - let user manage notifications manually
+    // await handleDeleteNotification(notification._id);
 
     // Close dropdown
     setIsOpen(false);
@@ -161,28 +159,35 @@ const NotificationDropdown = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Notifications
             </h3>
-            <div className="flex items-center space-x-2">
-                             {unreadCount > 0 && (
-                 <button
-                   onClick={async () => {
-                     await handleMarkAllAsRead();
-                     // Delete all notifications after marking as read
-                     notifications.forEach(notification => {
-                       if (!notification.isRead) {
-                         handleDeleteNotification(notification._id);
-                       }
-                     });
-                   }}
-                   disabled={markAllAsReadLoading}
-                   className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                 >
-                   {markAllAsReadLoading ? (
-                     <LoadingSpinner size="sm" />
-                   ) : (
-                     'Mark all read'
-                   )}
-                 </button>
-               )}
+                        <div className="flex items-center space-x-2">
+              <button
+                onClick={() => refreshData()}
+                disabled={notificationsLoading}
+                className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh notifications"
+              >
+                {notificationsLoading ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  '↻'
+                )}
+              </button>
+              {unreadCount > 0 && (
+                <button
+                  onClick={async () => {
+                    await handleMarkAllAsRead();
+                    // Don't delete all notifications - let user manage them manually
+                  }}
+                  disabled={markAllAsReadLoading}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {markAllAsReadLoading ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    'Mark all read'
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"

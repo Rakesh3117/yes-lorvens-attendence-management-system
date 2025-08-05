@@ -111,6 +111,12 @@ const createRequest = async (req, res) => {
 
     // Create notification for admin
     console.log('Creating notification for request:', request._id);
+    console.log('Request data for notification:', {
+      _id: request._id,
+      employeeId: request.employeeId,
+      type: request.type,
+      status: request.status
+    });
     try {
       await createRequestNotification(request);
       console.log('Notification created successfully for request:', request._id);
@@ -174,7 +180,10 @@ const getAllRequests = async (req, res) => {
     }
 
     const requests = await Request.find(query)
-      .populate("employeeId", "name email employeeId department")
+      .populate([
+        { path: "employeeId", select: "name email employeeId department" },
+        { path: "approvedBy", select: "name" }
+      ])
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
@@ -198,10 +207,10 @@ const updateRequestStatus = async (req, res) => {
     const { requestId } = req.params;
     const { status, adminComments } = req.body;
 
-    const request = await Request.findById(requestId).populate(
-      "employeeId",
-      "name email employeeId"
-    );
+    const request = await Request.findById(requestId).populate([
+      { path: "employeeId", select: "name email employeeId" },
+      { path: "approvedBy", select: "name" }
+    ]);
 
     if (!request) {
       return sendErrorResponse(res, "Request not found", 404);

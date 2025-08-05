@@ -266,9 +266,9 @@ const DashboardCardDetails = ({ type, stats, data }) => {
           <div className="space-y-3">
             {employees.map((employee) => (
               <div
-                key={employee._id}
+                key={employee.employeeId}
                 className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/admin/employees/${employee._id}/details`}
+                onClick={() => window.location.href = `/admin/employees/${employee.attendanceId || employee.employeeId}/details`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-green-400 to-emerald-400 flex items-center justify-center">
@@ -283,12 +283,12 @@ const DashboardCardDetails = ({ type, stats, data }) => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    employee.attendanceStatus === 'late' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
-                    employee.attendanceStatus === 'half-day' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' :
+                    employee.status === 'late' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                    employee.status === 'half-day' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' :
                     'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
                   }`}>
-                    {employee.attendanceStatus === 'late' ? 'Late' :
-                     employee.attendanceStatus === 'half-day' ? 'Half Day' : 'Present'}
+                    {employee.status === 'late' ? 'Late' :
+                     employee.status === 'half-day' ? 'Half Day' : 'Present'}
                   </span>
                   <div className="text-xs text-gray-400 dark:text-gray-500">ID: {employee.employeeId}</div>
                 </div>
@@ -355,9 +355,9 @@ const DashboardCardDetails = ({ type, stats, data }) => {
           <div className="space-y-3">
             {employees.map((employee) => (
               <div
-                key={employee._id}
+                key={employee.employeeId}
                 className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/admin/employees/${employee._id}/details`}
+                onClick={() => window.location.href = `/admin/employees/${employee.attendanceId || employee.employeeId}/details`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-red-400 to-pink-400 flex items-center justify-center">
@@ -434,9 +434,9 @@ const DashboardCardDetails = ({ type, stats, data }) => {
           <div className="space-y-3">
             {employees.map((employee) => (
               <div
-                key={employee._id}
+                key={employee.employeeId}
                 className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/admin/employees/${employee._id}/details`}
+                onClick={() => window.location.href = `/admin/employees/${employee.attendanceId || employee.employeeId}/details`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 flex items-center justify-center">
@@ -511,9 +511,9 @@ const DashboardCardDetails = ({ type, stats, data }) => {
           <div className="space-y-3">
             {employees.map((employee) => (
               <div
-                key={employee._id}
+                key={employee.employeeId}
                 className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/admin/employees/${employee._id}/details`}
+                onClick={() => window.location.href = `/admin/employees/${employee.attendanceId || employee.employeeId}/details`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center">
@@ -665,9 +665,9 @@ const DashboardCardDetails = ({ type, stats, data }) => {
           <div className="space-y-3">
             {employees.map((employee) => (
               <div
-                key={employee._id}
+                key={employee.employeeId}
                 className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors cursor-pointer"
-                onClick={() => window.location.href = `/admin/employees/${employee._id}/details`}
+                onClick={() => window.location.href = `/admin/employees/${employee.attendanceId || employee.employeeId}/details`}
               >
                 <div className="flex items-center space-x-3">
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-orange-400 to-red-400 flex items-center justify-center">

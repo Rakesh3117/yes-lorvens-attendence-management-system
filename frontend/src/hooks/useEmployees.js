@@ -87,11 +87,23 @@ export const useDeleteEmployee = () => {
 };
 
 // Get employee details
-export const useEmployeeDetails = (id) => {
+export const useEmployeeDetails = (id, dateRange = null) => {
+  console.log('useEmployeeDetails hook called with ID:', id, 'dateRange:', dateRange);
+  
   return useQuery({
-    queryKey: employeeKeys.detail(id),
-    queryFn: () => adminAPI.getEmployeeDetails(id),
-    select: (response) => response.data,
+    queryKey: [...employeeKeys.detail(id), dateRange], // Include dateRange in query key
+    queryFn: async () => {
+      console.log('Making API call for employee details:', id);
+      const response = await adminAPI.getEmployeeDetails(id, dateRange);
+      console.log('API response received:', response);
+      return response;
+    },
+    select: (response) => {
+      console.log('Selecting data from response:', response.data);
+      // The API response structure is { status, message, data: { employee: {...} } }
+      return response.data.data;
+    },
     enabled: !!id,
+
   });
 };

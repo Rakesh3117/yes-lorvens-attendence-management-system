@@ -421,7 +421,14 @@ const Employees = () => {
                       <tr 
                         key={employee._id} 
                         className="hover:bg-indigo-50 dark:hover:bg-gray-700 hover:shadow-sm transition-all duration-200 cursor-pointer group"
-                        onClick={() => navigate(`/admin/employees/${employee._id}/details`)}
+                        onClick={() => {
+                          console.log('Navigating to employee details:', employee._id);
+                          try {
+                            navigate(`/admin/employees/${employee._id}/details`);
+                          } catch (error) {
+                            console.error('Navigation error:', error);
+                          }
+                        }}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
@@ -435,7 +442,11 @@ const Employees = () => {
                                 className="text-sm font-medium text-gray-900 dark:text-gray-100 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/admin/employees/${employee._id}/details`);
+                                  try {
+                                    navigate(`/admin/employees/${employee._id}/details`);
+                                  } catch (error) {
+                                    console.error('Navigation error:', error);
+                                  }
                                 }}
                               >
                                 {employee.name}
