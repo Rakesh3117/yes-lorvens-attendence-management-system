@@ -178,6 +178,7 @@ const createEmployee = async (req, res) => {
       address,
       joiningDate,
       salary,
+      role,
     } = req.body;
 
     // Generate employee ID if not provided
@@ -202,7 +203,7 @@ const createEmployee = async (req, res) => {
       address,
       joiningDate,
       salary,
-      role: "employee",
+      role,
       status: "pending", // Set status to pending until account verification
     });
 
@@ -218,17 +219,25 @@ const createEmployee = async (req, res) => {
         email,
         employeeId: finalEmployeeId,
         department,
-        role: "employee",
+        role,
       };
-
+      console.log(employee.role);
       // Get admin name from request user
       const adminName = req.user?.name || "Administrator";
-
-      await emailService.sendEmployeeInvitation(
+      if(employee.role === 'admin') {
+        console.log("admin");
+        await emailService.sendAdminInvitation(
+          userForEmail,
+          adminName
+        );
+      }
+      else{
+        await emailService.sendEmployeeInvitation(
         userForEmail,
         adminName,
         invitationToken
       );
+      }
     } catch (emailError) {
       console.error("Failed to send invitation email:", emailError);
       // Don't fail the request if email fails
@@ -244,6 +253,7 @@ const createEmployee = async (req, res) => {
           position: employee.position,
           status: employee.status,
           isInvited: employee.isInvited,
+          role: employee.role,
         },
         message:
           "Employee created successfully. Invitation email sent with verification link.",
@@ -260,6 +270,7 @@ const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+    console.log(updateData)
 
     // Remove sensitive fields that shouldn't be updated
     delete updateData.password;

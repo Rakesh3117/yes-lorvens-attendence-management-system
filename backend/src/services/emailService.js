@@ -371,6 +371,50 @@ class EmailService {
     });
   }
 
+  async sendAdminInvitation(adminUser, invitedByName) {
+  const loginURL = `${process.env.FRONTEND_URL}/login`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333;">You're Invited to Join X Company as an Admin!</h2>
+      <p>Hello ${adminUser.name},</p>
+      <p>You have been invited by ${invitedByName} to join the X Company attendance management system as an administrator.</p>
+      <p>Click the button below to log in and get started:</p>
+      <a href="${loginURL}" style="display: inline-block; background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; margin: 20px 0;">
+        Go to Login
+      </a>
+      <p>If the button doesn't work, copy and paste this link into your browser:</p>
+      <p style="word-break: break-all; color: #666;">${loginURL}</p>
+      <p>If you have any questions, please contact your system administrator.</p>
+      <p>Best regards,<br>X Company IT Team</p>
+    </div>
+  `;
+
+  const text = `
+    You're Invited to Join X Company as an Admin!
+    
+    Hello ${adminUser.name},
+    
+    You have been invited by ${invitedByName} to join the X Company attendance management system as an administrator.
+
+    Click the link below to log in and get started:
+    ${loginURL}
+
+    If you have any questions, please contact your system administrator.
+
+    Best regards,
+    X Company IT Team
+  `;
+
+  return this.sendEmail({
+    to: adminUser.email,
+    subject: "Admin Invitation to Join X Company",
+    html,
+    text,
+  });
+}
+
+
   async sendEmailVerification(user, verificationToken) {
     const verificationURL = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
 
