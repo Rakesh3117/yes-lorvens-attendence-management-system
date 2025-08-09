@@ -102,17 +102,28 @@ class AttendanceStatusService {
         throw new Error("Employee not found");
       }
 
-      let attendance = await Attendance.findByEmployeeAndDate(employeeId, date);
+      // Atomically ensure the attendance record exists for that day
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
 
-      // If no attendance record exists, create one
-      if (!attendance) {
-        attendance = await Attendance.create({
-          employee: employeeId,
-          date: date,
-          punchSessions: [],
-          status: "absent",
-        });
-      }
+      // Use a deterministic key (employee + date range) to upsert today's record
+      await Attendance.updateOne(
+        { employee: employeeId, date: { $gte: dayStart, $lte: dayEnd } },
+        {
+          $setOnInsert: {
+            employee: employeeId,
+            date: dayStart,
+            punchSessions: [],
+            status: "absent",
+            totalHours: 0,
+          },
+        },
+        { upsert: true }
+      );
+
+      let attendance = await Attendance.findByEmployeeAndDate(employeeId, date);
 
       // Calculate new status
       const newStatus = this.calculateAttendanceStatus(employee, date, attendance);

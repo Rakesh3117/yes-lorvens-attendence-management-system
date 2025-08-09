@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FiCalendar, FiClock, FiCheck, FiX, FiAlertCircle, FiLogIn, FiLogOut } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import { employeeAPI } from '../../services/api/employeeAPI';
@@ -19,17 +19,15 @@ const EmployeeCalendar = () => {
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
 
   // Fetch attendance data for the current month
-  const fetchAttendanceData = async () => {
+  const fetchAttendanceData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const startDate = new Date(currentYear, currentMonth, 1).toISOString().split('T')[0];
-      const endDate = new Date(currentYear, currentMonth + 1, 0).toISOString().split('T')[0];
-
+      // Prefer month/year to align with backend API
       const response = await employeeAPI.getAttendance({
-        startDate,
-        endDate
+        month: currentMonth + 1,
+        year: currentYear,
       });
 
       // Handle different response structures
@@ -48,20 +46,23 @@ const EmployeeCalendar = () => {
           data = response.data.records;
         } else if (response.data.attendanceLogs && Array.isArray(response.data.attendanceLogs)) {
           data = response.data.attendanceLogs;
+        } else if (response.data.data && response.data.data.attendanceLogs && Array.isArray(response.data.data.attendanceLogs)) {
+          // Common shape from backend: { data: { attendanceLogs, pagination } }
+          data = response.data.data.attendanceLogs;
         }
       }
-      setAttendanceData(data);
+      setAttendanceData(Array.isArray(data) ? data : []);
     } catch (error) {
       setError(error.response?.data?.error || 'Failed to fetch attendance data');
       setAttendanceData([]); // Ensure it's always an array
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentMonth, currentYear]);
 
   useEffect(() => {
     fetchAttendanceData();
-  }, [currentMonth, currentYear]);
+  }, [fetchAttendanceData]);
 
   // Navigate to previous month
   const goToPreviousMonth = () => {
@@ -78,15 +79,27 @@ const EmployeeCalendar = () => {
     if (!Array.isArray(attendanceData)) {
       return null;
     }
-    
-    const dateStr = new Date(currentYear, currentMonth, day).toISOString().split('T')[0];
-    
-    // Try different date field names that might be used
-    const attendance = attendanceData.find(a => {
+    // Normalize to IST date key for both calendar day and record date
+    const dateKey = new Date(currentYear, currentMonth, day).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      const attendance = attendanceData.find(a => {
       const recordDate = a.date || a.formattedDate || a.attendanceDate;
-      return recordDate === dateStr;
+      if (!recordDate) return false;
+      const recKey = new Date(recordDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      return recKey === dateKey;
     });
     return attendance;
+  };
+
+  // Derive a status when backend does not provide one
+  const deriveStatus = (record) => {
+    if (!record) return null;
+    if (record.status) return record.status;
+    const sessions = Array.isArray(record.punchSessions) ? record.punchSessions : [];
+    const total = typeof record.totalHours === 'number' ? record.totalHours : sessions.reduce((sum, s) => sum + (s.sessionHours || 0), 0);
+    if (sessions.length === 0 || total === 0) return 'absent';
+    if (total < 4) return 'half-day';
+    return 'present';
   };
 
   // Format time helper function
@@ -193,7 +206,7 @@ const EmployeeCalendar = () => {
       let statusDisplay;
       if (isToday && attendance) {
         // For today, show login/logout status based on current session status
-        if (attendance.currentSessionStatus === 'active') {
+        if (attendance.currentSessionStatus === 'active' || (attendance.punchSessions && attendance.punchSessions.some(s => s.punchIn && s.punchIn.time && !(s.punchOut && s.punchOut.time)))) {
           statusDisplay = getStatusDisplay('login');
         } else if (attendance.status === 'present') {
           statusDisplay = getStatusDisplay('logout');
@@ -202,7 +215,8 @@ const EmployeeCalendar = () => {
         }
       } else {
         // For other days, use attendance status
-        statusDisplay = attendance ? getStatusDisplay(attendance.status) : getStatusDisplay();
+        const effectiveStatus = attendance ? deriveStatus(attendance) : null;
+        statusDisplay = effectiveStatus ? getStatusDisplay(effectiveStatus) : getStatusDisplay();
       }
 
       days.push(
@@ -219,8 +233,9 @@ const EmployeeCalendar = () => {
               {day}
             </span>
             {/* Always show status badge */}
-            <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${statusDisplay.color}`}>
+            <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs space-x-1 ${statusDisplay.color}`}>
               {statusDisplay.icon}
+              <span className="hidden md:inline">{statusDisplay.text}</span>
             </div>
           </div>
           

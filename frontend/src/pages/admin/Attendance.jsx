@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { FiUsers, FiTrendingUp, FiTrendingDown, FiCalendar, FiClock, FiLogOut } from 'react-icons/fi';
+import { FiUsers, FiTrendingUp, FiTrendingDown, FiCalendar, FiClock, FiCheckCircle, FiPlay } from 'react-icons/fi';
 import { adminAPI } from '../../services/api/adminAPI';
-import { getStatusBadge } from '../../utils/helpers';
-import { useAuth } from '../../hooks/useAuth';
+// import { getStatusBadge } from '../../utils/helpers';
+// import { useAuth } from '../../hooks/useAuth';
+import SideModal from '../../components/common/SideModal';
 
 const Attendance = () => {
-  const { user } = useAuth();
+  // const { user } = useAuth();
   
   // Helper function to get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
@@ -26,8 +27,13 @@ const Attendance = () => {
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [loggedInEmployees, setLoggedInEmployees] = useState([]);
-  const [autoPunchOutStatus, setAutoPunchOutStatus] = useState(null);
+  // const [loggedInEmployees, setLoggedInEmployees] = useState([]);
+  // const [autoPunchOutStatus, setAutoPunchOutStatus] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [employeeRecord, setEmployeeRecord] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState('');
 
   // Fetch attendance data
   const fetchAttendance = async (date) => {
@@ -68,28 +74,52 @@ const Attendance = () => {
   // Fetch logged-in employees and auto punch-out status
   useEffect(() => {
     if (selectedDate === getTodayDate()) {
-      fetchLoggedInEmployees();
-      fetchAutoPunchOutStatus();
+      // fetchLoggedInEmployees();
+      // fetchAutoPunchOutStatus();
     }
   }, [selectedDate]);
 
   // Fetch logged-in employees
-  const fetchLoggedInEmployees = async () => {
-    try {
-      const response = await adminAPI.getLoggedInEmployees(selectedDate);
-      setLoggedInEmployees(response.data.data.employees || []);
-    } catch (error) {
-      console.error('Error fetching logged-in employees:', error);
-    }
-  };
+  // const fetchLoggedInEmployees = async () => {
+  //   try {
+  //     const response = await adminAPI.getLoggedInEmployees(selectedDate);
+  //     setLoggedInEmployees(response.data.data.employees || []);
+  //   } catch (error) {
+  //     console.error('Error fetching logged-in employees:', error);
+  //   }
+  // };
 
   // Fetch auto punch-out status
-  const fetchAutoPunchOutStatus = async () => {
+  // const fetchAutoPunchOutStatus = async () => {
+  //   try {
+  //     const response = await adminAPI.getAutoPunchOutStatus();
+  //     setAutoPunchOutStatus(response.data.data);
+  //   } catch (error) {
+  //     console.error('Error fetching auto punch-out status:', error);
+  //   }
+  // };
+
+  // Fetch single employee record for the selected date
+  const openEmployeeDetails = async (employee) => {
     try {
-      const response = await adminAPI.getAutoPunchOutStatus();
-      setAutoPunchOutStatus(response.data.data);
-    } catch (error) {
-      console.error('Error fetching auto punch-out status:', error);
+      setSelectedEmployee(employee);
+      setDetailsOpen(true);
+      setDetailsLoading(true);
+      setDetailsError('');
+      setEmployeeRecord(null);
+
+      // Backend accepts employeeId (e.g., E-123) and converts to ObjectId
+      const resp = await adminAPI.getAllAttendance({
+        startDate: selectedDate,
+        endDate: selectedDate,
+        employeeId: employee.employeeId,
+      });
+      const records = resp.data?.data?.attendance || [];
+      setEmployeeRecord(records.length > 0 ? records[0] : null);
+    } catch (e) {
+      setDetailsError('Failed to load details');
+    } finally {
+      setDetailsLoading(false);
     }
   };
 
@@ -457,7 +487,11 @@ const Attendance = () => {
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredEmployees.length > 0 ? (
                     filteredEmployees.map((employee) => (
-                      <tr key={employee.employeeId} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <tr
+                        key={employee.employeeId}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                        onClick={() => openEmployeeDetails(employee)}
+                      >
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                           <div>
                             <div className="font-medium">{employee.name}</div>
@@ -515,6 +549,159 @@ const Attendance = () => {
           )}
         </div>
       )}
+
+      {/* Details Side Modal */}
+      <SideModal
+        isOpen={detailsOpen}
+        onClose={() => { setDetailsOpen(false); setSelectedEmployee(null); setEmployeeRecord(null); setDetailsError(''); }}
+        title={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.employeeId})` : 'Today Details'}
+        type="attendance"
+      >
+        {detailsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span className="ml-2 text-gray-600">Loading...</span>
+          </div>
+        ) : detailsError ? (
+          <div className="text-red-600 text-center py-4">{detailsError}</div>
+        ) : !employeeRecord ? (
+          <div className="text-center py-6 text-gray-600">No attendance recorded for this date.</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Professional Summary */}
+            {(() => {
+              const sessions = Array.isArray(employeeRecord.punchSessions)
+                ? [...employeeRecord.punchSessions].sort((a, b) => {
+                    const at = a?.punchIn?.time ? new Date(a.punchIn.time).getTime() : 0;
+                    const bt = b?.punchIn?.time ? new Date(b.punchIn.time).getTime() : 0;
+                    return at - bt;
+                  })
+                : [];
+              const completed = sessions.filter(s => s.punchOut && s.punchOut.time).length;
+              const firstIn = sessions[0]?.punchIn?.time || null;
+              const lastOut = sessions.length ? sessions[sessions.length - 1]?.punchOut?.time : null;
+              const fmt = (d) => (d ? new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-');
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-md text-blue-700 dark:text-blue-300">
+                        <FiPlay className="w-5 h-5" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-xs text-blue-700 dark:text-blue-300">Total Sessions</div>
+                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">{sessions.length}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="p-2 bg-green-100 dark:bg-green-900 rounded-md text-green-700 dark:text-green-300">
+                        <FiCheckCircle className="w-5 h-5" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-xs text-green-700 dark:text-green-300">Completed</div>
+                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">{completed}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                      <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-md text-indigo-700 dark:text-indigo-300">
+                        <FiClock className="w-5 h-5" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-xs text-indigo-700 dark:text-indigo-300">Total Hours</div>
+                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">{(employeeRecord.totalHours || 0).toFixed(2)}h</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center space-x-6">
+                      <div>
+                        <div className="text-xs text-gray-500">First Punch In</div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{fmt(firstIn)}</div>
+                      </div>
+                      <div className="hidden sm:block h-6 w-px bg-gray-200 dark:bg-gray-700" />
+                      <div>
+                        <div className="text-xs text-gray-500">Last Punch Out</div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{fmt(lastOut)}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500">Date: {new Date(employeeRecord.date).toLocaleDateString()}</div>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* Sessions Timeline */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+              <h4 className="text-md font-semibold text-gray-900 dark:text-gray-100 mb-4">Today's Sessions</h4>
+              {!(Array.isArray(employeeRecord.punchSessions) && employeeRecord.punchSessions.length) ? (
+                <div className="text-gray-500 dark:text-gray-400 text-center py-6">No sessions for this date</div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-200 dark:bg-gray-700" />
+                  <div className="space-y-4">
+                    {[...employeeRecord.punchSessions]
+                      .sort((a, b) => {
+                        const at = a?.punchIn?.time ? new Date(a.punchIn.time).getTime() : 0;
+                        const bt = b?.punchIn?.time ? new Date(b.punchIn.time).getTime() : 0;
+                        return at - bt;
+                      })
+                      .map((s, idx) => {
+                      const isCompleted = !!(s.punchOut && s.punchOut.time);
+                      return (
+                        <div key={idx} className="relative pl-12">
+                          <div
+                            className="absolute left-2 top-1 flex items-center justify-center w-5 h-5 rounded-full"
+                            style={{
+                              backgroundColor: isCompleted ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
+                              border: '1px solid',
+                              borderColor: isCompleted ? 'rgba(16,185,129,0.5)' : 'rgba(59,130,246,0.5)'
+                            }}
+                          >
+                            {isCompleted ? (
+                              <FiCheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            ) : (
+                              <FiPlay className="w-3.5 h-3.5 text-blue-600" />
+                            )}
+                          </div>
+                          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Session {idx + 1}</div>
+                              <div
+                                className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium"
+                                style={{
+                                  backgroundColor: isCompleted ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
+                                  color: isCompleted ? 'rgb(5,150,105)' : 'rgb(37,99,235)'
+                                }}
+                              >
+                                {isCompleted ? 'Completed' : 'Active'}
+                              </div>
+                            </div>
+                            <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
+                              <div className="text-gray-600 dark:text-gray-300">
+                                <span className="text-xs text-gray-500 block">Punch In</span>
+                                <span className="font-semibold">{s.punchIn?.time ? new Date(s.punchIn.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                              </div>
+                              <div className="text-gray-600 dark:text-gray-300">
+                                <span className="text-xs text-gray-500 block">Punch Out</span>
+                                <span className="font-semibold">{s.punchOut?.time ? new Date(s.punchOut.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}</span>
+                              </div>
+                              <div className="text-gray-600 dark:text-gray-300">
+                                <span className="text-xs text-gray-500 block">Hours</span>
+                                <span className="font-semibold">{(s.sessionHours || 0).toFixed(2)}h</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </SideModal>
     </div>
   );
 };

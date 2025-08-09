@@ -11,18 +11,23 @@ const punchIn = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    let attendance = await Attendance.findByEmployeeAndDate(
-      req.user._id,
-      today
+    // Atomically ensure the attendance record exists (prevents duplicate key under concurrency)
+    const filter = { employee: req.user._id, date: today };
+    await Attendance.updateOne(
+      filter,
+      {
+        $setOnInsert: {
+          employee: req.user._id,
+          date: today,
+          punchSessions: [],
+          status: "present",
+          totalHours: 0,
+        },
+      },
+      { upsert: true }
     );
 
-    if (!attendance) {
-      attendance = await Attendance.create({
-        employee: req.user._id,
-        date: today,
-        punchSessions: [],
-      });
-    }
+    const attendance = await Attendance.findOne(filter);
 
     const currentSession = attendance.getCurrentSession();
 

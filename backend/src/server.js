@@ -12,6 +12,7 @@ const configRoutes = require("./routes/config");
 const requestRoutes = require("./routes/requests");
 const notificationRoutes = require("./routes/notifications");
 const cronService = require("./services/cronService");
+const { ensureIndexes } = require("./services/indexMaintenanceService");
 const { initializeSuperAdmin } = require("./controllers/authController");
 
 const app = express();
@@ -125,6 +126,14 @@ const startServer = async () => {
     await initializeSuperAdmin();
   } catch (error) {
     console.error("❌ Super admin initialization error:", error);
+  }
+
+  // Ensure DB indexes are correct (fix legacy indexes)
+  try {
+    await ensureIndexes();
+    console.log("✅ Index maintenance completed");
+  } catch (error) {
+    console.warn("⚠️ Index maintenance encountered issues:", error.message);
   }
 
   // Initialize cron service for auto punch-out

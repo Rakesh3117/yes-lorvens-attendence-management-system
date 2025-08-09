@@ -1,17 +1,96 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { adminAPI } from '../../services/api/adminAPI';
 
 const DashboardCardDetails = ({ type, stats, data }) => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+
+  // (moved useEffect below to avoid "used before defined" linter warning)
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const params = { limit: 50 };
+      if (type === 'inactive') {
+        // Dashboard "Inactive" count includes non-active users (inactive + pending)
+        const [inactiveRes, pendingRes] = await Promise.all([
+          adminAPI.getAllEmployees({ ...params, status: 'inactive' }),
+          adminAPI.getAllEmployees({ ...params, status: 'pending' }),
+        ]);
+        const inactive = inactiveRes.data?.data?.employees || [];
+        const pending = pendingRes.data?.data?.employees || [];
+        const byId = new Map();
+        [...inactive, ...pending].forEach((u) => byId.set(u._id, u));
+        let combined = [...byId.values()];
+
+        // Fallback: if empty, fetch all and filter non-active client-side (aligns with dashboard count logic)
+        if (combined.length === 0) {
+          const allRes = await adminAPI.getAllEmployees({ ...params });
+          const all = allRes.data?.data?.employees || [];
+          combined = all.filter((u) => u.status !== 'active');
+        }
+
+        setEmployees(combined);
+        return;
+      } else if (type === 'activeEmployees') {
+        params.status = 'active';
+      }
+      const response = await adminAPI.getAllEmployees(params);
+      setEmployees(response.data.data.employees || []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
+      setError('Failed to load employees');
+    } finally {
+      setLoading(false);
+    }
+  }, [type]);
+
+  const fetchAttendanceData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      // Get today's date in IST timezone (YYYY-MM-DD format)
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      // For present/absent, use the special today endpoint which returns
+      // statuses: 'completed', 'punched-in', 'not-started'
+      if (type === 'attendance' || type === 'absent') {
+        const todayResp = await adminAPI.getTodayAttendance(today);
+        const list = todayResp.data.data.employees || [];
+        const filtered = type === 'attendance'
+          ? list.filter((emp) => ['completed', 'punched-in'].includes(emp.status))
+          : list.filter((emp) => emp.status === 'not-started');
+        setEmployees(filtered);
+        return;
+      }
+
+      // For leave/late/half-day, query attendance records for today and filter by status
+      const params = { startDate: today, endDate: today };
+      if (type === 'leave') params.status = 'leave';
+      if (type === 'late') params.status = 'late';
+      if (type === 'halfDay') params.status = 'half-day';
+
+      const attendanceResp = await adminAPI.getAllAttendance(params);
+      const records = attendanceResp.data.data.attendance || [];
+      const mapped = records
+        .filter((rec) => rec.employee) // ensure populated
+        .map((rec) => ({
+          employeeId: rec.employee.employeeId,
+          name: rec.employee.name,
+          department: rec.employee.department,
+          status: rec.status,
+          attendanceId: rec._id,
+        }));
+      setEmployees(mapped);
+    } catch (err) {
+      console.error('Error fetching attendance data:', err);
+      setError('Failed to load attendance data');
+    } finally {
+      setLoading(false);
+    }
+  }, [type]);
 
   // Fetch employees based on card type
   useEffect(() => {
@@ -20,133 +99,8 @@ const DashboardCardDetails = ({ type, stats, data }) => {
     } else if (type === 'attendance' || type === 'absent' || type === 'late' || type === 'leave' || type === 'halfDay') {
       fetchAttendanceData();
     }
-  }, [type]);
-
-  const fetchEmployees = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      const params = new URLSearchParams({
-        limit: 50, // Limit to 50 employees for the side panel
-      });
-
-      // Add status filter based on card type
-      if (type === 'inactive') {
-        params.append('status', 'inactive');
-      } else if (type === 'activeEmployees') {
-        // For active employees, show only active employees
-        params.append('status', 'active');
-      }
-      // For totalEmployees, don't add any status filter - show all employees
-
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/admin/employees?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch employees');
-      }
-
-      const data = await response.json();
-      setEmployees(data.data.employees || []);
-    } catch (err) {
-      console.error('Error fetching employees:', err);
-      setError('Failed to load employees');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAttendanceData = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Get today's date in IST timezone (YYYY-MM-DD format)
-      const today = new Date().toLocaleDateString('en-CA', {
-        timeZone: 'Asia/Kolkata'
-      });
-
-      // For absent employees, we need a different approach
-      if (type === 'absent') {
-        // Use the same logic as the backend - call the today's attendance API
-        const todayResponse = await fetch(`${process.env.REACT_APP_API_URL}/admin/attendance/today`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!todayResponse.ok) {
-          throw new Error('Failed to fetch today\'s attendance data');
-        }
-
-        const todayData = await todayResponse.json();
-        
-        // Filter employees with absent status
-        const absentEmployees = todayData.data.employees.filter(emp => 
-          emp.status === 'absent'
-        );
-
-        setEmployees(absentEmployees);
-        return;
-      }
-
-      // For other attendance types, use the today's attendance API for consistency
-      const todayResponse = await fetch(`${process.env.REACT_APP_API_URL}/admin/attendance/today`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!todayResponse.ok) {
-        throw new Error('Failed to fetch today\'s attendance data');
-      }
-
-      const todayData = await todayResponse.json();
-      
-      // Filter employees based on card type
-      let filteredEmployees = [];
-      if (todayData.data && todayData.data.employees) {
-        switch (type) {
-          case 'attendance':
-            filteredEmployees = todayData.data.employees.filter(emp => 
-              ['present', 'late', 'half-day'].includes(emp.status)
-            );
-            break;
-          case 'late':
-            filteredEmployees = todayData.data.employees.filter(emp => 
-              emp.status === 'late'
-            );
-            break;
-          case 'leave':
-            filteredEmployees = todayData.data.employees.filter(emp => 
-              emp.status === 'leave'
-            );
-            break;
-          case 'halfDay':
-            filteredEmployees = todayData.data.employees.filter(emp => 
-              emp.status === 'half-day'
-            );
-            break;
-          default:
-            filteredEmployees = todayData.data.employees;
-        }
-      }
-      
-      setEmployees(filteredEmployees);
-    } catch (err) {
-      console.error('Error fetching attendance data:', err);
-      setError('Failed to load attendance data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, fetchEmployees, fetchAttendanceData]);
 
   const getStatusBadge = (status) => {
     const { getStatusDisplay } = require('../../utils/helpers');
