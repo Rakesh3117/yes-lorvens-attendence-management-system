@@ -653,8 +653,8 @@ const createManualAttendance = async (req, res) => {
     // Calculate total hours if both punch in and punch out are provided
     let totalHours = 0;
     if (punchIn && punchOut) {
-      const punchInTime = new Date(`2000-01-01T${punchIn}`);
-      const punchOutTime = new Date(`2000-01-01T${punchOut}`);
+      const punchInTime = convertToIST(`2000-01-01T${punchIn}`);
+      const punchOutTime = convertToIST(`2000-01-01T${punchOut}`);
       totalHours = (punchOutTime - punchInTime) / (1000 * 60 * 60);
     }
 
@@ -677,16 +677,15 @@ const createManualAttendance = async (req, res) => {
 
       if (punchIn) {
         session.punchIn = {
-          time: new Date(`2000-01-01T${punchIn}`),
+          time: convertToIST(`2000-01-01T${punchIn}`),
           location: "Manual Entry",
           ipAddress: "",
           userAgent: "",
         };
       }
-
       if (punchOut) {
         session.punchOut = {
-          time: new Date(`2000-01-01T${punchOut}`),
+          time: convertToIST(`2000-01-01T${punchOut}`),
           location: "Manual Entry",
           ipAddress: "",
           userAgent: "",
@@ -759,8 +758,8 @@ const updateAttendance = async (req, res) => {
       let totalHours = 0;
       
       if (punchIn && punchOut) {
-        const punchInTime = new Date(`2000-01-01T${punchIn}`);
-        const punchOutTime = new Date(`2000-01-01T${punchOut}`);
+        const punchInTime = convertToIST(`2000-01-01T${punchIn}`);
+        const punchOutTime = convertToIST(`2000-01-01T${punchOut}`);
         totalHours = (punchOutTime - punchInTime) / (1000 * 60 * 60);
       }
 
@@ -791,23 +790,22 @@ const updateAttendance = async (req, res) => {
           sessionHours: parseFloat(totalHours.toFixed(2)),
         };
 
-        if (punchIn) {
-          session.punchIn = {
-            time: new Date(`2000-01-01T${punchIn}`),
-            location: "Manual Entry",
-            ipAddress: "",
-            userAgent: "",
-          };
-        }
-
-        if (punchOut) {
-          session.punchOut = {
-            time: new Date(`2000-01-01T${punchOut}`),
-            location: "Manual Entry",
-            ipAddress: "",
-            userAgent: "",
-          };
-        }
+        if (punchIn !== undefined) {
+            session.punchIn = {
+              time: convertToIST(`2000-01-01T${punchIn}`),
+              location: "Manual Entry",
+              ipAddress: "",
+              userAgent: "",
+            };
+          }
+          if (punchOut !== undefined) {
+            session.punchOut = {
+              time: convertToIST(`2000-01-01T${punchOut}`),
+              location: "Manual Entry",
+              ipAddress: "",
+              userAgent: "",
+            };
+          }
 
         attendance.punchSessions = [session];
       }

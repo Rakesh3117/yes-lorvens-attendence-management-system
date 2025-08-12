@@ -37,8 +37,8 @@ class AutoPunchOutService {
           // Auto punch-out the last open session
           const lastOpenSession = openSessions[openSessions.length - 1];
           
-          // Set punch-out time to end of day (e.g., 6:00 PM IST)
-          const endOfDay = moment(today).hour(18).minute(0).second(0).millisecond(0);
+          // Set punch-out time to end of day (e.g., 11:59 PM IST)
+          const endOfDay = moment(today).hour(23).minute(59).second(0).millisecond(0);
           
           // Update the session with punch-out time
           lastOpenSession.punchOut = {

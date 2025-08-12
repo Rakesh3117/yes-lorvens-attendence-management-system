@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { convertToIST } = require("../utils/helpers");
 
 const attendanceSchema = new mongoose.Schema(
   {
@@ -205,7 +206,7 @@ attendanceSchema.methods.performPunchIn = async function (punchInData) {
 
     const newSession = {
       punchIn: {
-        time: new Date(),
+        time: punchInData.punchTime ? convertToIST(punchInData.punchTime) : convertToIST(new Date()), // <-- Use IST
         location: punchInData.location || "",
         ipAddress: punchInData.ipAddress || "",
         userAgent: punchInData.userAgent || "",
@@ -237,7 +238,7 @@ attendanceSchema.methods.performPunchOut = async function (punchOutData) {
     }
 
     currentSession.punchOut = {
-      time: new Date(),
+      time: punchOutData.punchTime ? convertToIST(punchOutData.punchTime) : convertToIST(new Date()), // <-- Use IST
       location: punchOutData.location || "",
       ipAddress: punchOutData.ipAddress || "",
       userAgent: punchOutData.userAgent || "",
@@ -289,11 +290,11 @@ attendanceSchema.methods.updateLastSession = async function (updateData) {
 
     if (updateData.punchOut) {
       lastSession.punchOut = {
-        time: new Date(),
+        time: updateData.punchOut.punchTime ? convertToIST(updateData.punchOut.punchTime) : convertToIST(new Date()), // <-- Use IST
         location: updateData.punchOut.location || "",
         ipAddress: updateData.punchOut.ipAddress || "",
         userAgent: updateData.punchOut.userAgent || "",
-    };
+      };
 
       // Calculate session hours
       if (lastSession.punchIn && lastSession.punchIn.time) {
@@ -303,7 +304,7 @@ attendanceSchema.methods.updateLastSession = async function (updateData) {
         const hours = duration / (1000 * 60 * 60);
         lastSession.sessionHours = parseFloat(hours.toFixed(2));
       }
-  }
+    }
 
     this.calculateTotalHours();
 

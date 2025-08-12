@@ -2,6 +2,7 @@ const Attendance = require("../models/Attendance");
 const User = require("../models/User");
 const moment = require("moment");
 const { sendSuccessResponse, sendErrorResponse, calculatePagination } = require("../utils/responseHelpers");
+const { convertToIST } = require("../utils/helpers");
 
 // @desc    Punch in
 // @route   POST /api/employee/punch-in
@@ -35,10 +36,11 @@ const punchIn = async (req, res) => {
       return sendErrorResponse(res, "You have an active session. Please punch out first.", 400);
     }
 
-    await attendance.performPunchIn({
+   await attendance.performPunchIn({
       location: req.body.location || "",
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
+      punchTime: convertToIST(new Date()), // Pass IST time
     });
 
     const newCurrentSession = attendance.getCurrentSession();
@@ -80,10 +82,11 @@ const punchOut = async (req, res) => {
       return sendErrorResponse(res, "You have no active session to punch out from", 400);
     }
 
-    await attendance.performPunchOut({
+   await attendance.performPunchOut({
       location: req.body.location || "",
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
+      punchTime: convertToIST(new Date()), // Pass IST time
     });
 
     return sendSuccessResponse(res, {
