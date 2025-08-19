@@ -16,6 +16,7 @@ const {
   exportReports,
   getLoggedInEmployees,
   getAutoPunchOutStatus,
+  getEmployeesByAttendanceStatus,
 } = require("../controllers/adminController");
 
 const { protect, requireAdmin, desktopOnly } = require("../middlewares/auth");
@@ -63,6 +64,7 @@ router.get(
   getAllAttendance
 );
 router.get("/attendance/today", getTodayAttendance);
+router.get("/attendance/by-status", getEmployeesByAttendanceStatus);
 router.post(
   "/attendance",
   validateManualAttendanceEntry,

@@ -3,6 +3,7 @@ const Attendance = require("../models/Attendance");
 const moment = require("moment");
 const emailService = require("../services/emailService");
 const AutoPunchOutService = require("../services/autoPunchOutService");
+const AttendanceStatusService = require("../services/attendanceStatusService");
 const { createISTDateRangeQuery, convertToIST } = require("../utils/helpers");
 const { sendSuccessResponse, sendErrorResponse, calculatePagination, buildQuery } = require("../utils/responseHelpers");
 
@@ -411,7 +412,6 @@ const getAllAttendance = async (req, res) => {
 // @access  Private (Admin)
 const getTodayAttendance = async (req, res) => {
   try {
-    const AttendanceStatusService = require("../services/attendanceStatusService");
     const { date } = req.query;
     const selectedDate = date || new Date().toISOString().split("T")[0];
 
@@ -419,6 +419,8 @@ const getTodayAttendance = async (req, res) => {
     const today = moment().startOf('day');
     const selectedDateMoment = moment(selectedDate).startOf('day');
     const isToday = today.isSame(selectedDateMoment);
+    const currentHourForToday = moment().hour();
+    const isWorkDayCompleted = currentHourForToday >= 23; // After 11 PM
 
     // Only update attendance status for previous days, not for today
     let updateResults = null;
@@ -506,37 +508,62 @@ const getTodayAttendance = async (req, res) => {
       let status, statusDisplay;
       
       if (isToday) {
-        // For today, show descriptive status based on punch times
-        if (firstPunchIn && lastPunchOut) {
-          status = "completed";
-          statusDisplay = {
-            label: "Completed",
-            color: "green",
-            bgColor: "bg-green-100",
-            textColor: "text-green-800",
-            darkBgColor: "dark:bg-green-900",
-            darkTextColor: "dark:text-green-300",
-          };
-        } else if (firstPunchIn && !lastPunchOut) {
-          status = "punched-in";
-          statusDisplay = {
-            label: "Punched In",
-            color: "blue",
-            bgColor: "bg-blue-100",
-            textColor: "text-blue-800",
-            darkBgColor: "dark:bg-blue-900",
-            darkTextColor: "dark:text-blue-300",
-          };
+        if (isWorkDayCompleted) {
+          // After work day is completed, show final status
+          if (firstPunchIn && lastPunchOut) {
+            status = "present";
+            statusDisplay = {
+              label: "Present",
+              color: "green",
+              bgColor: "bg-green-100",
+              textColor: "text-green-800",
+              darkBgColor: "dark:bg-green-900",
+              darkTextColor: "dark:text-green-300",
+            };
+          } else {
+            status = "absent";
+            statusDisplay = {
+              label: "Absent",
+              color: "red",
+              bgColor: "bg-red-100",
+              textColor: "text-red-800",
+              darkBgColor: "dark:bg-red-900",
+              darkTextColor: "dark:text-red-300",
+            };
+          }
         } else {
-          status = "not-started";
-          statusDisplay = {
-            label: "Not Started",
-            color: "gray",
-            bgColor: "bg-gray-100",
-            textColor: "text-gray-800",
-            darkBgColor: "dark:bg-gray-900",
-            darkTextColor: "dark:text-gray-300",
-          };
+          // During work day, show working status
+          if (firstPunchIn && lastPunchOut) {
+            status = "completed";
+            statusDisplay = {
+              label: "Completed",
+              color: "green",
+              bgColor: "bg-green-100",
+              textColor: "text-green-800",
+              darkBgColor: "dark:bg-green-900",
+              darkTextColor: "dark:text-green-300",
+            };
+          } else if (firstPunchIn && !lastPunchOut) {
+            status = "punched-in";
+            statusDisplay = {
+              label: "Punched In",
+              color: "blue",
+              bgColor: "bg-blue-100",
+              textColor: "text-blue-800",
+              darkBgColor: "dark:bg-blue-900",
+              darkTextColor: "dark:text-blue-300",
+            };
+          } else {
+            status = "not-started";
+            statusDisplay = {
+              label: "Not Started",
+              color: "gray",
+              bgColor: "bg-gray-100",
+              textColor: "text-gray-800",
+              darkBgColor: "dark:bg-gray-900",
+              darkTextColor: "dark:text-gray-300",
+            };
+          }
         }
       } else {
         // For previous days, use the actual status from the database
@@ -955,17 +982,19 @@ const getDashboardStats = async (req, res) => {
     // Calculate attendance statistics more accurately
     const currentHour = moment().hour();
     const isToday = moment().startOf('day').isSame(moment(today).startOf('day'));
+    const isWorkDayCompleted = currentHour >= 23; // After 11 PM
     
     // Declare variables in outer scope
     let attendancePercentage = 0;
     let absentPercentage = 0;
     
-    // For today, use the same logic as getTodayAttendance
+    // For today, use different logic based on whether work day is completed
     if (isToday) {
       // Calculate present employees based on punch sessions (completed + punched-in)
       let completedCount = 0;
       let punchedInCount = 0;
       let notStartedCount = 0;
+      let absentCount = 0;
       
       uniqueAttendance.forEach(record => {
         // Check if employee has any punch sessions
@@ -979,6 +1008,9 @@ const getDashboardStats = async (req, res) => {
             // Employee has only punch-in (still logged in)
             punchedInCount++;
           }
+        } else if (record.status === "absent") {
+          // Employee has attendance record but is marked as absent (e.g., rejected leave)
+          absentCount++;
         }
       });
       
@@ -989,25 +1021,47 @@ const getDashboardStats = async (req, res) => {
       todayStats.completed = completedCount;
       todayStats["punched-in"] = punchedInCount;
       todayStats["not-started"] = notStartedCount;
+      todayStats.absent = absentCount;
       
-      // For today, present = completed + punched-in
-      const totalPresent = completedCount + punchedInCount;
-      const totalAbsent = notStartedCount; // Only count those who haven't started
-      
-      todayStats.present = totalPresent;
-      todayStats.absent = totalAbsent;
+      if (isWorkDayCompleted) {
+        // After work day is completed, calculate final present/absent
+        const totalPresent = completedCount + punchedInCount;
+        const totalAbsent = notStartedCount + absentCount;
+        
+        todayStats.present = totalPresent;
+        todayStats.absent = totalAbsent;
+        
+        // Calculate attendance percentage
+        attendancePercentage =
+          activeEmployees > 0
+            ? Math.round((totalPresent / activeEmployees) * 100)
+            : 0;
 
-    // Calculate attendance percentage
-      attendancePercentage =
-      activeEmployees > 0
-          ? Math.round((totalPresent / activeEmployees) * 100)
-          : 0;
+        // Calculate absent percentage
+        absentPercentage =
+          activeEmployees > 0
+            ? Math.round((totalAbsent / activeEmployees) * 100)
+            : 0;
+      } else {
+        // During work day, show working status instead of final present/absent
+        const totalWorking = completedCount + punchedInCount;
+        const totalNotWorking = notStartedCount + absentCount;
+        
+        todayStats.present = totalWorking;
+        todayStats.absent = totalNotWorking;
+        
+        // Calculate working percentage
+        attendancePercentage =
+          activeEmployees > 0
+            ? Math.round((totalWorking / activeEmployees) * 100)
+            : 0;
 
-      // Calculate absent percentage
-      absentPercentage =
-        activeEmployees > 0
-          ? Math.round((totalAbsent / activeEmployees) * 100)
-          : 0;
+        // Calculate not working percentage
+        absentPercentage =
+          activeEmployees > 0
+            ? Math.round((totalNotWorking / activeEmployees) * 100)
+            : 0;
+      }
     } else {
       // For previous days, use the original logic
       // Calculate present employees (present + late + half-day)
@@ -1090,18 +1144,23 @@ const getDashboardStats = async (req, res) => {
       todayAttendance: isToday ? (todayStats.completed + todayStats["punched-in"]) : todayStats.present,
         attendancePercentage,
       absentPercentage,
-        absentToday: todayStats.absent,
+        absentToday: isToday ? (todayStats["not-started"] + todayStats.absent) : todayStats.absent,
       absentWithRecords: uniqueAttendance.filter((record) => record.status === "absent").length,
         lateToday: todayStats.late,
         halfDayToday: todayStats["half-day"],
         leaveToday: todayStats.leave,
+        workFromHomeToday: todayStats["work-from-home"],
+        onDutyToday: todayStats["on-duty"],
       totalPresentToday: isToday ? (todayStats.completed + todayStats["punched-in"]) : (todayStats.present + todayStats.late + todayStats["half-day"]),
-      totalAbsentToday: isToday ? todayStats["not-started"] : todayStats.absent,
+      totalAbsentToday: isToday ? (todayStats["not-started"] + todayStats.absent) : todayStats.absent,
         inactiveEmployees: totalEmployees - activeEmployees,
       // Add new status counts for today
       completedToday: todayStats.completed || 0,
       punchedInToday: todayStats["punched-in"] || 0,
       notStartedToday: todayStats["not-started"] || 0,
+        // Add work day completion status
+      isWorkDayCompleted: isToday ? isWorkDayCompleted : true, // Previous days are always completed
+      isToday: isToday,
         recentAttendance: recentAttendance.map((record) => ({
           _id: record._id,
           employee: record.employee,
@@ -1152,6 +1211,14 @@ const getReports = async (req, res) => {
         query.employee = employee._id;
       }
     }
+
+    // Check if we're looking at today's date
+    const today = moment().startOf('day');
+    const startDateMoment = moment(startDate).startOf('day');
+    const endDateMoment = moment(endDate).startOf('day');
+    const isTodayIncluded = today.isBetween(startDateMoment, endDateMoment, null, '[]');
+    const currentHour = moment().hour();
+    const isWorkDayCompleted = currentHour >= 23; // After 11 PM
 
     // Build aggregation pipeline based on report type
     let pipeline = [
@@ -1250,9 +1317,53 @@ const getReports = async (req, res) => {
             }
           },
           {
+            $addFields: {
+              // Calculate proper status based on punch sessions and work day completion
+              displayStatus: {
+                $cond: {
+                  if: {
+                    $and: [
+                      { $eq: [{ $dateToString: { format: "%Y-%m-%d", date: new Date() } }, "$_id.date"] },
+                      { $lt: [{ $hour: new Date() }, 23] }
+                    ]
+                  },
+                  then: {
+                    // For today before 11 PM, show working status
+                    $cond: {
+                      if: { $and: [{ $ne: ["$punchIn", null] }, { $ne: ["$punchOut", null] }] },
+                      then: "completed",
+                      else: {
+                        $cond: {
+                          if: { $and: [{ $ne: ["$punchIn", null] }, { $eq: ["$punchOut", null] }] },
+                          then: "punched-in",
+                          else: "not-started"
+                        }
+                      }
+                    }
+                  },
+                  else: {
+                    // For previous days or today after 11 PM, show final status (Present/Absent)
+                    $cond: {
+                      if: { 
+                        $and: [
+                          { $ne: ["$punchIn", null] }, 
+                          { $ne: ["$punchOut", null] },
+                          { $gt: [{ $ifNull: ["$totalHours", 0] }, 0] }
+                        ] 
+                      },
+                      then: "present",
+                      else: "absent"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
             $project: {
               _id: 1,
               status: 1,
+              displayStatus: 1,
               totalHours: 1,
               punchIn: 1,
               punchOut: 1
@@ -1409,6 +1520,21 @@ const getReports = async (req, res) => {
     pipeline.push({ $skip: skip }, { $limit: parseInt(limit) });
 
     const results = await Attendance.aggregate(pipeline);
+
+    // Debug: Log some results to see what's happening
+    if (results.length > 0) {
+      console.log('Reports Results Debug:', {
+        sampleRecord: {
+          date: results[0]._id.date,
+          status: results[0].status,
+          displayStatus: results[0].displayStatus,
+          totalHours: results[0].totalHours,
+          punchIn: results[0].punchIn,
+          punchOut: results[0].punchOut
+        },
+        totalResults: results.length
+      });
+    }
 
     // Get total count for pagination
     const countPipeline = pipeline.slice(0, -2); // Remove skip and limit
@@ -1716,8 +1842,6 @@ const updateAttendanceStatus = async (req, res) => {
       return sendErrorResponse(res, "Date is required");
     }
 
-    const AttendanceStatusService = require("../services/attendanceStatusService");
-
     // Update attendance status for all employees
     const results = await AttendanceStatusService.batchUpdateAttendanceStatus(
       new Date(date)
@@ -1777,6 +1901,54 @@ const getAutoPunchOutStatus = async (req, res) => {
   }
 };
 
+// @desc    Get employees by attendance status for a specific date
+// @route   GET /api/admin/attendance/by-status
+// @access  Private (Admin)
+const getEmployeesByAttendanceStatus = async (req, res) => {
+  try {
+    const { status, date } = req.query;
+    
+    if (!status) {
+      return sendErrorResponse(res, "Status is required");
+    }
+
+    const targetDate = date ? new Date(date) : new Date();
+    const today = moment(targetDate).startOf('day');
+    const todayQuery = createISTDateRangeQuery(today.format('YYYY-MM-DD'), today.format('YYYY-MM-DD'));
+
+    // Get attendance records for the specified status
+    const attendanceRecords = await Attendance.find({
+      ...todayQuery,
+      status: status
+    }).populate("employee", "name employeeId department status");
+
+    // Filter to only include active employees
+    const activeEmployees = attendanceRecords.filter(record => 
+      record.employee && record.employee.status === "active"
+    );
+
+    const employees = activeEmployees.map(record => ({
+      _id: record.employee._id,
+      name: record.employee.name,
+      employeeId: record.employee.employeeId,
+      department: record.employee.department,
+      status: record.status,
+      attendanceId: record._id,
+      totalHours: record.totalHours
+    }));
+
+    return sendSuccessResponse(res, {
+      date: today.format('YYYY-MM-DD'),
+      status: status,
+      count: employees.length,
+      employees: employees
+    });
+  } catch (error) {
+    console.error('Get employees by attendance status error:', error);
+    return sendErrorResponse(res, `Failed to get employees by attendance status: ${error.message}`);
+  }
+};
+
 module.exports = {
   getAllEmployees,
   getNextEmployeeId,
@@ -1794,4 +1966,5 @@ module.exports = {
   exportReports,
   getLoggedInEmployees,
   getAutoPunchOutStatus,
+  getEmployeesByAttendanceStatus,
 };

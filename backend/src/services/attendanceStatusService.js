@@ -71,6 +71,22 @@ class AttendanceStatusService {
     }
   }
 
+  // Check if employee has rejected requests for the given date
+  static async checkRejectedRequestStatus(employeeId, date) {
+    try {
+      const request = await Request.findOne({
+        employeeId,
+        startDate: { $lte: date },
+        endDate: { $gte: date },
+        status: "rejected",
+      });
+
+      return request ? request.type : null;
+    } catch (error) {
+      throw new Error(`Error checking rejected request status: ${error.message}`);
+    }
+  }
+
   // Get display text for attendance status
   static getStatusDisplay(status) {
     const statusMap = {
@@ -125,7 +141,31 @@ class AttendanceStatusService {
 
       let attendance = await Attendance.findByEmployeeAndDate(employeeId, date);
 
-      // Calculate new status
+      // First, check for approved requests
+      const approvedRequestStatus = await this.checkRequestStatus(employeeId, date);
+      if (approvedRequestStatus) {
+        // If there's an approved request, set status accordingly
+        if (attendance.status !== approvedRequestStatus) {
+          attendance.status = approvedRequestStatus;
+          await attendance.save();
+        }
+        return attendance;
+      }
+
+      // Check for rejected requests
+      const rejectedRequestType = await this.checkRejectedRequestStatus(employeeId, date);
+      if (rejectedRequestType) {
+        // If there's a rejected request, employee can punch in/out normally
+        // Calculate status based on punch sessions
+        const newStatus = this.calculateAttendanceStatus(employee, date, attendance);
+        if (attendance.status !== newStatus) {
+          attendance.status = newStatus;
+          await attendance.save();
+        }
+        return attendance;
+      }
+
+      // No requests found, calculate status normally
       const newStatus = this.calculateAttendanceStatus(employee, date, attendance);
 
       // Update status if it has changed

@@ -39,6 +39,10 @@ export const adminAPI = {
     return api.get("/admin/attendance/today", { params: { date } });
   },
 
+  getEmployeesByAttendanceStatus: (status, date) => {
+    return api.get("/admin/attendance/by-status", { params: { status, date } });
+  },
+
   getAttendanceForDate: (date) => {
     return api.get("/admin/attendance", { params: { date } });
   },

@@ -31,6 +31,18 @@ const Reports = () => {
     reportType: 'attendance'
   });
 
+  // Check if work day is completed (after 11 PM)
+  const isWorkDayCompleted = () => {
+    const currentHour = new Date().getHours();
+    return currentHour >= 23;
+  };
+
+  // Check if a date is today
+  const isToday = (dateStr) => {
+    const today = new Date().toISOString().split('T')[0];
+    return dateStr === today;
+  };
+
   const departments = [
     { value: 'all', label: 'All Departments' },
     { value: 'ENGINEERING', label: 'Engineering' },
@@ -172,13 +184,46 @@ const Reports = () => {
   };
 
   // Format time
-  const formatTime = (timeStr) => {
-    if (!timeStr) return '-';
-    return new Date(`2000-01-01T${timeStr}`).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+  const formatTime = (timeValue) => {
+    if (!timeValue) return '-';
+    
+    try {
+      let date;
+      
+      // If it's already a Date object
+      if (timeValue instanceof Date) {
+        date = timeValue;
+      }
+      // If it's a string that looks like a time (HH:MM:SS)
+      else if (typeof timeValue === 'string' && timeValue.includes(':') && !timeValue.includes('T')) {
+        date = new Date(`2000-01-01T${timeValue}`);
+      }
+      // If it's a string that looks like a date
+      else if (typeof timeValue === 'string' && timeValue.includes('-')) {
+        date = new Date(timeValue);
+      }
+      // If it's a timestamp
+      else if (typeof timeValue === 'number') {
+        date = new Date(timeValue);
+      }
+      else {
+        return '-';
+      }
+      
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return '-';
+      }
+      
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.error('Error formatting time:', error, timeValue);
+      return '-';
+    }
   };
 
   // Get status badge
@@ -278,7 +323,37 @@ const Reports = () => {
                     <div className="flex flex-col items-center space-y-2">
                       {/* Attendance Status */}
                       <div className="w-full">
-                        {getStatusBadge(record.status)}
+                        {(() => {
+                          // Debug logging for specific employee and date
+                          if (employee.employeeId === 'E-142' && dateStr === '2025-08-15') {
+                            console.log('Debug E-142 FRI AUG 15:', {
+                              record,
+                              displayStatus: record.displayStatus,
+                              status: record.status,
+                              totalHours: record.totalHours,
+                              punchIn: record.punchIn,
+                              punchOut: record.punchOut
+                            });
+                          }
+                          
+                          // For today, check if work day is completed
+                          if (isToday(dateStr)) {
+                            if (!isWorkDayCompleted()) {
+                              // During work day, show working status
+                              return getStatusBadge(record.displayStatus || record.status);
+                            } else {
+                              // After work day, show final status
+                              if (record.punchIn && record.punchOut && (record.totalHours || 0) > 0) {
+                                return getStatusBadge('present');
+                              } else {
+                                return getStatusBadge('absent');
+                              }
+                            }
+                          } else {
+                            // For previous days, use the displayStatus or status
+                            return getStatusBadge(record.displayStatus || record.status);
+                          }
+                        })()}
                       </div>
                       
                       {/* Total Work Hours */}

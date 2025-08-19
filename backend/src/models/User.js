@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema(
   {
@@ -176,7 +177,6 @@ userSchema.methods.updateLastLogin = function () {
 
 // Instance method to create password reset token
 userSchema.methods.createPasswordResetToken = function () {
-  const crypto = require("crypto");
   const resetToken = crypto.randomBytes(32).toString("hex");
 
   this.passwordResetToken = crypto
@@ -191,7 +191,6 @@ userSchema.methods.createPasswordResetToken = function () {
 
 // Instance method to create email verification token
 userSchema.methods.createEmailVerificationToken = function () {
-  const crypto = require("crypto");
   const verificationToken = crypto.randomBytes(32).toString("hex");
 
   this.emailVerificationToken = crypto
@@ -206,7 +205,6 @@ userSchema.methods.createEmailVerificationToken = function () {
 
 // Instance method to create invitation token
 userSchema.methods.generateInvitationToken = async function () {
-  const crypto = require("crypto");
   const invitationToken = crypto.randomBytes(32).toString("hex");
 
   this.invitationToken = crypto

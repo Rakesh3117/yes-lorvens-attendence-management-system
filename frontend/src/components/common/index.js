@@ -9,3 +9,4 @@ export { default as SideModal } from "./SideModal";
 export { default as ThemeToggle } from "./ThemeToggle";
 export { default as NotificationDropdown } from "./NotificationDropdown";
 export { default as NotificationBadge } from "./NotificationBadge";
+export { default as IdleTimerIndicator } from "./IdleTimerIndicator";

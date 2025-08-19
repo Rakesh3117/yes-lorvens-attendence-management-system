@@ -66,11 +66,24 @@ const DashboardCardDetails = ({ type, stats, data }) => {
         return;
       }
 
-      // For leave/late/half-day, query attendance records for today and filter by status
+      // For leave/work from home/on duty, use the new by-status endpoint
+      let status;
+      if (type === 'leave') status = 'leave';
+      else if (type === 'workFromHome') status = 'work-from-home';
+      else if (type === 'onDuty') status = 'on-duty';
+
+      if (status) {
+        const response = await adminAPI.getEmployeesByAttendanceStatus(status, today);
+        const employees = response.data.data.employees || [];
+        setEmployees(employees);
+        return;
+      }
+
+      // Fallback to old method for other statuses
       const params = { startDate: today, endDate: today };
       if (type === 'leave') params.status = 'leave';
-      if (type === 'late') params.status = 'late';
-      if (type === 'halfDay') params.status = 'half-day';
+      if (type === 'workFromHome') params.status = 'work-from-home';
+      if (type === 'onDuty') params.status = 'on-duty';
 
       const attendanceResp = await adminAPI.getAllAttendance(params);
       const records = attendanceResp.data.data.attendance || [];
@@ -96,7 +109,7 @@ const DashboardCardDetails = ({ type, stats, data }) => {
   useEffect(() => {
     if (type === 'totalEmployees' || type === 'activeEmployees' || type === 'inactive') {
       fetchEmployees();
-    } else if (type === 'attendance' || type === 'absent' || type === 'late' || type === 'leave' || type === 'halfDay') {
+    } else if (type === 'attendance' || type === 'absent' || type === 'leave' || type === 'workFromHome' || type === 'onDuty') {
       fetchAttendanceData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,5 +1,6 @@
 const Attendance = require("../models/Attendance");
 const User = require("../models/User");
+const AttendanceStatusService = require("../services/attendanceStatusService");
 const moment = require("moment");
 const { sendSuccessResponse, sendErrorResponse, calculatePagination } = require("../utils/responseHelpers");
 const { convertToIST } = require("../utils/helpers");
@@ -11,6 +12,12 @@ const punchIn = async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Check if employee has approved leave for today
+    const approvedLeave = await AttendanceStatusService.checkRequestStatus(req.user._id, today);
+    if (approvedLeave) {
+      return sendErrorResponse(res, `Cannot punch in. You have approved ${approvedLeave} for today.`, 400);
+    }
 
     // Atomically ensure the attendance record exists (prevents duplicate key under concurrency)
     const filter = { employee: req.user._id, date: today };
@@ -68,6 +75,12 @@ const punchOut = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Check if employee has approved leave for today
+    const approvedLeave = await AttendanceStatusService.checkRequestStatus(req.user._id, today);
+    if (approvedLeave) {
+      return sendErrorResponse(res, `Cannot punch out. You have approved ${approvedLeave} for today.`, 400);
+    }
+
     const attendance = await Attendance.findByEmployeeAndDate(
       req.user._id,
       today
@@ -109,8 +122,6 @@ const punchOut = async (req, res) => {
 // @access  Private (Employee)
 const getTodayStatus = async (req, res) => {
   try {
-    const AttendanceStatusService = require("../services/attendanceStatusService");
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 

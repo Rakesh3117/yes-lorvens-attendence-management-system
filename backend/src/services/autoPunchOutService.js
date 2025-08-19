@@ -1,4 +1,5 @@
 const Attendance = require("../models/Attendance");
+const AttendanceStatusService = require("./attendanceStatusService");
 const moment = require("moment");
 const { createISTDateRangeQuery } = require("../utils/helpers");
 
@@ -64,6 +65,13 @@ class AutoPunchOutService {
 
           // Save the updated attendance record
           await attendanceRecord.save();
+
+          // Update attendance status after auto punch-out
+          try {
+            await AttendanceStatusService.updateAttendanceStatus(attendanceRecord.employee._id, today.toDate());
+          } catch (statusError) {
+            console.error(`Error updating attendance status for ${attendanceRecord.employee.employeeId}:`, statusError);
+          }
 
           autoPunchOutCount++;
           

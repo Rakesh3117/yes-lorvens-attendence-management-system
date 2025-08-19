@@ -1,5 +1,7 @@
 const Request = require("../models/Request");
 const User = require("../models/User");
+const Attendance = require("../models/Attendance");
+const AttendanceStatusService = require("../services/attendanceStatusService");
 const {
   createRequestNotification,
   createStatusUpdateNotification,
@@ -94,6 +96,13 @@ const createRequest = async (req, res) => {
 
     if (overlappingRequest) {
       return sendErrorResponse(res, "You have an overlapping request. Please check your existing requests.", 400);
+    }
+
+    // Check if employee has already punched in on any date in the request period
+    const hasPunchedIn = await checkEmployeePunchInStatus(employeeId, start, end);
+    
+    if (hasPunchedIn) {
+      return sendErrorResponse(res, "Cannot create leave request. You have already punched in on one or more dates in the request period.", 400);
     }
 
     // Create the request
@@ -220,12 +229,41 @@ const updateRequestStatus = async (req, res) => {
       return sendErrorResponse(res, "Request has already been processed", 400);
     }
 
+    // If trying to approve the request, check if employee has punched in on any date in the request period
+    if (status === "approved") {
+      const startDate = new Date(request.startDate);
+      const endDate = new Date(request.endDate);
+      
+      // Check if employee has punched in on any date in the request period
+      const hasPunchedIn = await checkEmployeePunchInStatus(request.employeeId._id, startDate, endDate);
+      
+      if (hasPunchedIn) {
+        return sendErrorResponse(res, "Cannot approve leave request. Employee has already punched in on one or more dates in the request period.", 400);
+      }
+    }
+
     request.status = status;
     request.adminComments = adminComments;
     request.approvedBy = req.user._id; // Fixed: use _id instead of id
     request.approvedAt = new Date();
 
     await request.save();
+
+    // Update attendance records for all dates in the request period
+    try {
+      const startDate = new Date(request.startDate);
+      const endDate = new Date(request.endDate);
+      
+      // Iterate through each date in the request period
+      for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+        await AttendanceStatusService.updateAttendanceStatus(request.employeeId._id, new Date(date));
+      }
+      
+      console.log(`Updated attendance status for employee ${request.employeeId.employeeId} from ${startDate.toDateString()} to ${endDate.toDateString()}`);
+    } catch (attendanceError) {
+      console.error('Error updating attendance status after request status change:', attendanceError);
+      // Don't fail the request update if attendance update fails
+    }
 
     // Create notification for employee
     console.log('Creating status update notification for request:', request._id, 'Status:', status);
@@ -239,6 +277,43 @@ const updateRequestStatus = async (req, res) => {
     return sendSuccessResponse(res, request, `Request ${status} successfully`);
   } catch (error) {
     return sendErrorResponse(res, "Failed to update request status. Please try again.");
+  }
+};
+
+// Helper function to check if employee has punched in on any date in the given range
+const checkEmployeePunchInStatus = async (employeeId, startDate, endDate) => {
+  try {
+    // Create date range query
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Find attendance records for the employee in the date range
+    const attendanceRecords = await Attendance.find({
+      employee: employeeId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+
+    // Check if any attendance record has punch sessions
+    for (const record of attendanceRecords) {
+      if (record.punchSessions && record.punchSessions.length > 0) {
+        // Check if any session has a punch-in time
+        const hasPunchIn = record.punchSessions.some(session => 
+          session.punchIn && session.punchIn.time
+        );
+        
+        if (hasPunchIn) {
+          return true; // Employee has punched in on at least one date
+        }
+      }
+    }
+
+    return false; // Employee has not punched in on any date in the range
+  } catch (error) {
+    console.error('Error checking employee punch-in status:', error);
+    throw new Error('Failed to check employee punch-in status');
   }
 };
 

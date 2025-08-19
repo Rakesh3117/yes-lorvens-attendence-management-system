@@ -165,13 +165,13 @@ const Dashboard = () => {
                     <div className="ml-5 w-0 flex-1">
                       <dl>
                         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                          Present Today
+                          {stats.isToday && !stats.isWorkDayCompleted ? 'Working Today' : 'Present Today'}
                         </dt>
                         <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
                           {stats.todayAttendance}
                         </dd>
                         <dd className="text-sm text-gray-500 dark:text-gray-400">
-                          {stats.attendancePercentage}% attendance
+                          {stats.attendancePercentage}% {stats.isToday && !stats.isWorkDayCompleted ? 'working' : 'attendance'}
                         </dd>
                       </dl>
                     </div>
@@ -196,10 +196,13 @@ const Dashboard = () => {
                     <div className="ml-5 w-0 flex-1">
                       <dl>
                         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                          Absent Today
+                          {stats.isToday && !stats.isWorkDayCompleted ? 'Not Working' : 'Absent Today'}
                         </dt>
                         <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
                           {stats.absentToday}
+                        </dd>
+                        <dd className="text-sm text-gray-500 dark:text-gray-400">
+                          {stats.absentPercentage}% {stats.isToday && !stats.isWorkDayCompleted ? 'not working' : 'absent'}
                         </dd>
                       </dl>
                     </div>
@@ -210,62 +213,6 @@ const Dashboard = () => {
 
             {/* Additional Stats Row */}
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Late Today */}
-              <div 
-                className="dashboard-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                onClick={() => handleCardClick('late', 'Late Arrivals')}
-              >
-                <div className="p-5">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                        <svg className="card-icon w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                          Late Today
-                        </dt>
-                        <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                          {stats.lateToday}
-                        </dd>
-                      </dl>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Half Day Today */}
-              <div 
-                className="dashboard-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                onClick={() => handleCardClick('halfDay', 'Half Day Details')}
-              >
-                <div className="p-5">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0">
-                      <div className="w-8 h-8 bg-orange-500 rounded-md flex items-center justify-center">
-                        <svg className="card-icon w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <div className="ml-5 w-0 flex-1">
-                      <dl>
-                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
-                          Half Day
-                        </dt>
-                        <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                          {stats.halfDayToday}
-                        </dd>
-                      </dl>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Leave Today */}
               <div 
                 className="dashboard-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105"
@@ -287,6 +234,62 @@ const Dashboard = () => {
                         </dt>
                         <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
                           {stats.leaveToday}
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Work From Home Today */}
+              <div 
+                className="dashboard-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                onClick={() => handleCardClick('workFromHome', 'Work From Home Details')}
+              >
+                <div className="p-5">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-indigo-500 rounded-md flex items-center justify-center">
+                        <svg className="card-icon w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                          Work From Home
+                        </dt>
+                        <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                          {stats.workFromHomeToday || 0}
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* On Duty Today */}
+              <div 
+                className="dashboard-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                onClick={() => handleCardClick('onDuty', 'On Duty Details')}
+              >
+                <div className="p-5">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 bg-teal-500 rounded-md flex items-center justify-center">
+                        <svg className="card-icon w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="ml-5 w-0 flex-1">
+                      <dl>
+                        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">
+                          On Duty
+                        </dt>
+                        <dd className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                          {stats.onDutyToday || 0}
                         </dd>
                       </dl>
                     </div>
@@ -337,7 +340,9 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Attendance Overview */}
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20 p-4 rounded-lg border border-emerald-200 dark:border-emerald-700/50">
-                    <h4 className="text-sm font-medium text-emerald-800 dark:text-emerald-300 mb-2">Present & Working</h4>
+                    <h4 className="text-sm font-medium text-emerald-800 dark:text-emerald-300 mb-2">
+                      {stats.isToday && !stats.isWorkDayCompleted ? 'Working & Present' : 'Present & Working'}
+                    </h4>
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">
                         {stats.totalPresentToday}
@@ -347,13 +352,15 @@ const Dashboard = () => {
                       </span>
                     </div>
                     <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                      Present: {stats.todayAttendance} | Late: {stats.lateToday} | Half Day: {stats.halfDayToday}
+                      {stats.isToday && !stats.isWorkDayCompleted ? 'Working' : 'Present'}: {stats.todayAttendance}
                     </div>
                   </div>
 
                   {/* Absent Overview */}
                   <div className="bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 p-4 rounded-lg border border-red-200 dark:border-red-700/50">
-                    <h4 className="text-sm font-medium text-red-800 dark:text-red-300 mb-2">Absent & Leave</h4>
+                    <h4 className="text-sm font-medium text-red-800 dark:text-red-300 mb-2">
+                      {stats.isToday && !stats.isWorkDayCompleted ? 'Not Working & Leave' : 'Absent & Leave'}
+                    </h4>
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold text-red-900 dark:text-red-100">
                         {stats.totalAbsentToday}
@@ -363,10 +370,28 @@ const Dashboard = () => {
                       </span>
                     </div>
                     <div className="mt-2 text-xs text-red-600 dark:text-red-400">
-                      Absent: {stats.absentToday} | Leave: {stats.leaveToday}
+                      {stats.isToday && !stats.isWorkDayCompleted ? 'Not Working' : 'Absent'}: {stats.absentToday} | Leave: {stats.leaveToday}
                     </div>
                   </div>
 
+                  {/* Remote Work Overview */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 p-4 rounded-lg border border-indigo-200 dark:border-indigo-700/50">
+                    <h4 className="text-sm font-medium text-indigo-800 dark:text-indigo-300 mb-2">Remote Work</h4>
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl font-bold text-indigo-900 dark:text-indigo-100">
+                        {(stats.workFromHomeToday || 0) + (stats.onDutyToday || 0)}
+                      </span>
+                      <span className="text-sm text-indigo-600 dark:text-indigo-400">
+                        Remote employees
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
+                      WFH: {stats.workFromHomeToday || 0} | On Duty: {stats.onDutyToday || 0}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Employee Status */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-700/50">
                     <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Employee Status</h4>
