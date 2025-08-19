@@ -97,7 +97,7 @@ app.use((err, req, res, next) => {
   if (err.statusCode === 429) {
     // Rate limit exceeded logging
   }
-  
+
   res.status(err.statusCode || 500).json({
     error: err.message || "Internal Server Error",
   });
@@ -144,11 +144,11 @@ const startServer = async () => {
     console.error("❌ Cron service initialization error:", error);
   }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📧 Super Admin Email: superadmin@yopmail.com`);
-    console.log(`🔑 Super Admin Password: Admin@123`);
-  });
+  // app.listen(PORT, () => {
+  //   console.log(`🚀 Server running on port ${PORT}`);
+  //   console.log(`📧 Super Admin Email: superadmin@yopmail.com`);
+  //   console.log(`🔑 Super Admin Password: Admin@123`);
+  // });
 };
 
 startServer();
